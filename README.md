@@ -104,7 +104,8 @@ app/src/main/java/com/example/
 ## 🚀 Como Compilar Localmente
 
 1. **Pré-requisitos**:
-   - JDK 17+
+   - JDK 21 (Temurin / OpenJDK 21)
+   - Gradle 9.3.1
    - Android SDK (API 36)
 2. **Clonar e preparar ambiente**:
    ```bash
