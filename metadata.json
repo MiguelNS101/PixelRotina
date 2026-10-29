@@ -1,0 +1,6 @@
+{
+  "name": "PixelRotina",
+  "description": "Organizador de rotina diária e semanal em Pixel Art focado em bem-estar, com lembretes de intervalo, alarmes persistentes, integração com calendário e backup no Google Drive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,141 @@
+name: Android APK & Release (PixelRotina)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publicar uma GitHub Release com os APKs gerados?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      release_tag:
+        description: 'Tag da versao (ex: v1.0.0) caso publique Release manual'
+        required: false
+        default: 'v1.0.0'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Debug & Release APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Preparar arquivo .env padrao (se nao existir)
+        run: |
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+      - name: Preparar Keystores (Debug e Release)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Garante que debug.keystore exista para o signingConfig debugConfig
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # Usa a keystore de Release dos Secrets do GitHub ou gera uma chave autoassinada de fallback
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
+          else
+            echo "Nenhum secret KEYSTORE_BASE64 configurado; gerando my-upload-key.jks para build de release instalavel..."
+            keytool -genkeypair -v \
+              -keystore my-upload-key.jks \
+              -storepass pixelrotina123 \
+              -alias upload \
+              -keypass pixelrotina123 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=PixelRotina Release,OU=Mobile,O=PixelRotina,L=SaoPaulo,ST=SP,C=BR"
+            echo "STORE_PASSWORD=pixelrotina123" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=pixelrotina123" >> $GITHUB_ENV
+          fi
+          echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/my-upload-key.jks" >> $GITHUB_ENV
+
+      - name: Executar Testes Unitarios (Robolectric)
+        run: gradle :app:testDebugUnitTest
+
+      - name: Compilar APKs (Debug e Release)
+        run: gradle assembleDebug assembleRelease
+
+      - name: Preparar APKs com nomes amigaveis
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/PixelRotina-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/PixelRotina-release.apk
+          ls -lh dist/
+
+      - name: Enviar APK Debug como Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelRotina-Debug-APK
+          path: dist/PixelRotina-debug.apk
+          if-no-files-found: error
+
+      - name: Enviar APK Release como Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelRotina-Release-APK
+          path: dist/PixelRotina-release.apk
+          if-no-files-found: error
+
+      - name: Publicar GitHub Release (em Tags v* ou Dispatch Manual)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release == 'true')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}
+          name: "PixelRotina ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}"
+          generate_release_notes: true
+          body: |
+            ## PixelRotina — Organizador de Rotina Diaria & Bem-Estar em Pixel Art
+            
+            ### Arquivos disponiveis para instalacao Android:
+            - **`PixelRotina-release.apk`**: Versao otimizada de producao pronta para instalar no Android.
+            - **`PixelRotina-debug.apk`**: Versao de depuracao e testes.
+          files: |
+            dist/PixelRotina-release.apk
+            dist/PixelRotina-debug.apk
