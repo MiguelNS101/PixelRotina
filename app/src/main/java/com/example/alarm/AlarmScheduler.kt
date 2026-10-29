@@ -160,7 +160,12 @@ object AlarmScheduler {
 
         try {
             if (routine.alertMode == AlertMode.PERSISTENT_ALARM && canScheduleExactAlarms(context)) {
-                val showIntent = Intent(context, MainActivity::class.java)
+                val showIntent = Intent(context, FullScreenAlarmActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(EXTRA_ROUTINE_ID, routine.id)
+                    putExtra(EXTRA_ROUTINE_TITLE, routine.title)
+                    putExtra(EXTRA_ROUTINE_DESC, routine.description)
+                }
                 val showPendingIntent = PendingIntent.getActivity(
                     context,
                     routine.id.toInt(),
@@ -226,6 +231,19 @@ object AlarmScheduler {
             putExtra(EXTRA_IS_TEST, true)
         }
         context.sendBroadcast(intent)
+
+        if (routine.alertMode == AlertMode.PERSISTENT_ALARM) {
+            try {
+                val fullScreenIntent = Intent(context, FullScreenAlarmActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra(EXTRA_ROUTINE_ID, routine.id)
+                    putExtra(EXTRA_ROUTINE_TITLE, routine.title)
+                    putExtra(EXTRA_ROUTINE_DESC, routine.description)
+                }
+                context.startActivity(fullScreenIntent)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private fun buildTriggerPendingIntent(context: Context, routine: RoutineEntity): PendingIntent {

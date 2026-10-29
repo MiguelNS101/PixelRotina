@@ -221,7 +221,12 @@ fun PixelRotinaApp(
                     contentWindowInsets = WindowInsets.safeDrawing,
                     topBar = {
                         PixelTopBar(
-                            activeRoutinesCount = uiState.todayActiveRoutines.size
+                            activeRoutinesCount = uiState.todayActiveRoutines.size,
+                            pomodoroRunningText = if (uiState.pomodoroState.isRunning) {
+                                "🍅 ${uiState.pomodoroState.formattedTime}"
+                            } else {
+                                null
+                            }
                         )
                     },
                     floatingActionButton = {
@@ -348,6 +353,19 @@ fun PixelRotinaApp(
                                     onEditRoutine = { viewModel.openEditRoutineDialog(it) },
                                     onTestAlert = { viewModel.triggerTestAlertForRoutine(it) },
                                     onCreateNewRoutine = { freq -> viewModel.openCreateRoutineDialog(freq) },
+                                    onTogglePomodoroExpanded = { viewModel.togglePomodoroExpanded() },
+                                    onSelectPomodoroPhase = { viewModel.selectPomodoroPhase(it) },
+                                    onSetPomodoroCustomDuration = { viewModel.setPomodoroCustomDurationSeconds(it) },
+                                    onTogglePomodoroStartPause = { viewModel.togglePomodoroStartPause() },
+                                    onResetPomodoroTimer = { viewModel.resetPomodoroTimer() },
+                                    onCompletePomodoroIntervalNow = { viewModel.completePomodoroIntervalNow() },
+                                    onLinkRoutineToPomodoro = { routine, autoStart ->
+                                        viewModel.linkRoutineToPomodoro(routine, autoStart)
+                                    },
+                                    onDismissPomodoroAlert = { viewModel.dismissPomodoroVisualAlert() },
+                                    onCompleteLinkedRoutineFromPomodoroAlert = { routineId ->
+                                        viewModel.completeLinkedRoutineFromPomodoroAlert(routineId)
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
 
@@ -459,7 +477,8 @@ fun PixelRotinaApp(
 
 @Composable
 private fun PixelTopBar(
-    activeRoutinesCount: Int
+    activeRoutinesCount: Int,
+    pomodoroRunningText: String? = null
 ) {
     val palette = LocalPixelPalette.current
     Row(
@@ -492,10 +511,22 @@ private fun PixelTopBar(
             }
         }
 
-        PixelBadge(
-            text = "$activeRoutinesCount ATIVAS HOJE",
-            containerColor = palette.surface,
-            contentColor = palette.textPrimary
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (pomodoroRunningText != null) {
+                PixelBadge(
+                    text = pomodoroRunningText,
+                    containerColor = palette.alarmCoral,
+                    contentColor = palette.onPrimary
+                )
+            }
+            PixelBadge(
+                text = "$activeRoutinesCount ATIVAS HOJE",
+                containerColor = palette.surface,
+                contentColor = palette.textPrimary
+            )
+        }
     }
 }

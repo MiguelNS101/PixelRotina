@@ -65,6 +65,8 @@ import com.example.ui.components.PixelButton
 import com.example.ui.components.PixelCard
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
+import com.example.ui.components.PomodoroEmbeddedCard
+import com.example.ui.components.PomodoroPhase
 import com.example.ui.theme.LocalPixelPalette
 import java.util.Calendar
 import kotlin.math.abs
@@ -79,6 +81,15 @@ fun TodayScreen(
     onEditRoutine: (RoutineEntity) -> Unit,
     onTestAlert: (RoutineEntity) -> Unit,
     onCreateNewRoutine: (FrequencyType) -> Unit,
+    onTogglePomodoroExpanded: () -> Unit = {},
+    onSelectPomodoroPhase: (PomodoroPhase) -> Unit = {},
+    onSetPomodoroCustomDuration: (Int) -> Unit = {},
+    onTogglePomodoroStartPause: () -> Unit = {},
+    onResetPomodoroTimer: () -> Unit = {},
+    onCompletePomodoroIntervalNow: () -> Unit = {},
+    onLinkRoutineToPomodoro: (RoutineEntity?, Boolean) -> Unit = { _, _ -> },
+    onDismissPomodoroAlert: () -> Unit = {},
+    onCompleteLinkedRoutineFromPomodoroAlert: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val palette = LocalPixelPalette.current
@@ -232,6 +243,23 @@ fun TodayScreen(
             }
         }
 
+        // 1.5 Embedded Pixel Art Pomodoro Focus Timer & End-of-Interval Visual Reminder
+        item {
+            PomodoroEmbeddedCard(
+                pomodoroState = uiState.pomodoroState,
+                todayRoutines = uiState.todayActiveRoutines,
+                onToggleExpanded = onTogglePomodoroExpanded,
+                onSelectPhase = onSelectPomodoroPhase,
+                onSetCustomDurationSeconds = onSetPomodoroCustomDuration,
+                onToggleStartPause = onTogglePomodoroStartPause,
+                onResetTimer = onResetPomodoroTimer,
+                onCompleteIntervalNow = onCompletePomodoroIntervalNow,
+                onLinkRoutine = { routine -> onLinkRoutineToPomodoro(routine, false) },
+                onDismissVisualAlert = onDismissPomodoroAlert,
+                onCompleteLinkedRoutineFromAlert = onCompleteLinkedRoutineFromPomodoroAlert
+            )
+        }
+
         // 2. Smart Gentle Rescheduling Banner (if any scheduled routine is past its time today)
         if (uiState.overdueTodayRoutines.isNotEmpty()) {
             item {
@@ -343,11 +371,14 @@ fun TodayScreen(
         } else {
             items(uiState.todayIntervalRoutines, key = { "interval_${it.id}" }) { routine ->
                 val doneCount = completedMap[routine.id] ?: 0
+                val isFocusedInPomodoro = uiState.pomodoroState.linkedRoutineId == routine.id
                 IntervalRoutineCard(
                     routine = routine,
                     doneCount = doneCount,
+                    isFocusedInPomodoro = isFocusedInPomodoro,
                     onCheckIn = { onCheckInRoutine(routine) },
                     onSnooze15 = { onGentleReschedule(routine, uiState.settings.defaultSnoozeMinutes) },
+                    onFocusPomodoro = { onLinkRoutineToPomodoro(routine, true) },
                     onTestNotification = { onTestAlert(routine) },
                     onEdit = { onEditRoutine(routine) }
                 )
@@ -390,12 +421,15 @@ fun TodayScreen(
         } else {
             items(uiState.todayScheduledRoutines, key = { "sched_${it.id}" }) { routine ->
                 val isDone = (completedMap[routine.id] ?: 0) >= routine.targetCountPerDay
+                val isFocusedInPomodoro = uiState.pomodoroState.linkedRoutineId == routine.id
                 ScheduledRoutineCard(
                     routine = routine,
                     isDoneToday = isDone,
+                    isFocusedInPomodoro = isFocusedInPomodoro,
                     snoozeMinutes = uiState.settings.defaultSnoozeMinutes,
                     onCheckIn = { onCheckInRoutine(routine) },
                     onSnooze = { onGentleReschedule(routine, uiState.settings.defaultSnoozeMinutes) },
+                    onFocusPomodoro = { onLinkRoutineToPomodoro(routine, true) },
                     onTestAlert = { onTestAlert(routine) },
                     onEdit = { onEditRoutine(routine) }
                 )
@@ -475,8 +509,10 @@ private fun HeroAmbientPixelEffect(
 private fun IntervalRoutineCard(
     routine: RoutineEntity,
     doneCount: Int,
+    isFocusedInPomodoro: Boolean,
     onCheckIn: () -> Unit,
     onSnooze15: () -> Unit,
+    onFocusPomodoro: () -> Unit,
     onTestNotification: () -> Unit,
     onEdit: () -> Unit
 ) {
@@ -485,6 +521,7 @@ private fun IntervalRoutineCard(
 
     PixelCard(
         containerColor = palette.surfaceElevated,
+        borderColor = if (isFocusedInPomodoro) palette.alarmCoral else palette.pixelBorder,
         modifier = Modifier.testTag("interval_card_${routine.id}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -515,7 +552,13 @@ private fun IntervalRoutineCard(
                             containerColor = palette.waterCyan,
                             contentColor = palette.onPrimary
                         )
-                        if (routine.nextTriggerMillis > System.currentTimeMillis()) {
+                        if (isFocusedInPomodoro) {
+                            PixelBadge(
+                                text = "🍅 EM FOCO",
+                                containerColor = palette.alarmCoral,
+                                contentColor = palette.onPrimary
+                            )
+                        } else if (routine.nextTriggerMillis > System.currentTimeMillis()) {
                             PixelBadge(
                                 text = "PRÓX: ${DateUtils.formatTime(routine.nextTriggerMillis)}",
                                 containerColor = palette.surface,
@@ -583,20 +626,29 @@ private fun IntervalRoutineCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PixelButton(
-                    text = "✓ DAR OK (+1)",
+                    text = "✓ OK (+1)",
                     onClick = onCheckIn,
                     containerColor = palette.wellnessGreen,
                     contentColor = palette.onPrimary,
                     modifier = Modifier
-                        .weight(1.3f)
+                        .weight(1.1f)
                         .testTag("quick_ok_button_${routine.id}")
+                )
+                PixelButton(
+                    text = "🍅 FOCAR",
+                    onClick = onFocusPomodoro,
+                    containerColor = if (isFocusedInPomodoro) palette.alarmCoral else palette.surface,
+                    contentColor = if (isFocusedInPomodoro) palette.onPrimary else palette.textPrimary,
+                    modifier = Modifier
+                        .weight(0.95f)
+                        .testTag("focus_pomodoro_interval_${routine.id}")
                 )
                 PixelButton(
                     text = "ADIAR",
                     onClick = onSnooze15,
                     containerColor = palette.surface,
                     contentColor = palette.textPrimary,
-                    modifier = Modifier.weight(0.8f)
+                    modifier = Modifier.weight(0.75f)
                 )
                 IconButton(
                     onClick = onTestNotification,
@@ -621,9 +673,11 @@ private fun IntervalRoutineCard(
 private fun ScheduledRoutineCard(
     routine: RoutineEntity,
     isDoneToday: Boolean,
+    isFocusedInPomodoro: Boolean,
     snoozeMinutes: Int,
     onCheckIn: () -> Unit,
     onSnooze: () -> Unit,
+    onFocusPomodoro: () -> Unit,
     onTestAlert: () -> Unit,
     onEdit: () -> Unit
 ) {
@@ -636,6 +690,7 @@ private fun ScheduledRoutineCard(
         } else {
             palette.surfaceElevated
         },
+        borderColor = if (isFocusedInPomodoro) palette.alarmCoral else palette.pixelBorder,
         modifier = Modifier.testTag("scheduled_card_${routine.id}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -672,7 +727,13 @@ private fun ScheduledRoutineCard(
                             containerColor = if (isAlarm) palette.alarmCoral.copy(alpha = 0.2f) else palette.secondary.copy(alpha = 0.25f),
                             contentColor = palette.textPrimary
                         )
-                        if (routine.syncToCalendar) {
+                        if (isFocusedInPomodoro) {
+                            PixelBadge(
+                                text = "🍅 EM FOCO",
+                                containerColor = palette.alarmCoral,
+                                contentColor = palette.onPrimary
+                            )
+                        } else if (routine.syncToCalendar) {
                             PixelBadge(
                                 text = "📅 AGENDA",
                                 containerColor = palette.surface,
@@ -712,20 +773,29 @@ private fun ScheduledRoutineCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PixelButton(
-                    text = if (isDoneToday) "✓ CONCLUÍDA (+1)" else "✓ CONCLUIR AGORA",
+                    text = if (isDoneToday) "✓ FEITA (+1)" else "✓ CONCLUIR",
                     onClick = onCheckIn,
                     containerColor = if (isDoneToday) palette.surface else palette.wellnessGreen,
                     contentColor = if (isDoneToday) palette.textPrimary else palette.onPrimary,
                     modifier = Modifier
-                        .weight(1.3f)
+                        .weight(1.1f)
                         .testTag("complete_scheduled_button_${routine.id}")
+                )
+                PixelButton(
+                    text = "🍅 FOCAR",
+                    onClick = onFocusPomodoro,
+                    containerColor = if (isFocusedInPomodoro) palette.alarmCoral else palette.surface,
+                    contentColor = if (isFocusedInPomodoro) palette.onPrimary else palette.textPrimary,
+                    modifier = Modifier
+                        .weight(0.95f)
+                        .testTag("focus_pomodoro_scheduled_${routine.id}")
                 )
                 PixelButton(
                     text = "+${snoozeMinutes}M",
                     onClick = onSnooze,
                     containerColor = palette.snoozeAmber.copy(alpha = 0.35f),
                     contentColor = palette.textPrimary,
-                    modifier = Modifier.weight(0.75f)
+                    modifier = Modifier.weight(0.65f)
                 )
                 IconButton(
                     onClick = onTestAlert,

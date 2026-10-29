@@ -222,6 +222,7 @@ fun PixelButton(
                 color = contentColor,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -246,7 +247,10 @@ fun PixelBadge(
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = contentColor
+            color = contentColor,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

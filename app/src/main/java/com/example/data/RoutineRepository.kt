@@ -14,87 +14,13 @@ class RoutineRepository(
     val allCheckIns: Flow<List<CheckInLogEntity>> = routineDao.observeAllCheckIns()
     val userSettings: Flow<UserSettings> = preferencesRepository.settingsFlow
 
-    suspend fun ensureSeedRoutinesIfFirstRun(hasSeeded: Boolean) {
-        if (hasSeeded) return
-        val existing = routineDao.getAllRoutinesOnce()
-        if (existing.isEmpty()) {
-            val defaults = listOf(
-                RoutineEntity(
-                    title = "Beber 1 Copo de Água",
-                    description = "Hidratação contínua! Dê apenas OK na notificação quando beber.",
-                    categoryName = RoutineCategory.HIDRATACAO.name,
-                    spriteName = PixelSpriteType.WATER_DROP.name,
-                    alertModeName = AlertMode.QUICK_OK_NOTIFICATION.name,
-                    frequencyTypeName = FrequencyType.INTERVAL.name,
-                    intervalMinutes = 60,
-                    windowStartHour = 8,
-                    windowEndHour = 21,
-                    targetCountPerDay = 8,
-                    daysOfWeekCsv = "1,2,3,4,5,6,7",
-                    isEnabled = true
-                ),
-                RoutineEntity(
-                    title = "Alongar Ombros & Pescoço",
-                    description = "Pausa rápida de 2 minutos para soltar a tensão e respirar fundo.",
-                    categoryName = RoutineCategory.CORPO_MENTE.name,
-                    spriteName = PixelSpriteType.LEAF_WELLNESS.name,
-                    alertModeName = AlertMode.QUICK_OK_NOTIFICATION.name,
-                    frequencyTypeName = FrequencyType.INTERVAL.name,
-                    intervalMinutes = 120,
-                    windowStartHour = 9,
-                    windowEndHour = 19,
-                    targetCountPerDay = 4,
-                    daysOfWeekCsv = "1,2,3,4,5",
-                    isEnabled = true
-                ),
-                RoutineEntity(
-                    title = "Sol da Manhã & Café Tranquilo",
-                    description = "Começar o dia sem pressa antes de olhar mensagens.",
-                    categoryName = RoutineCategory.ALIMENTACAO.name,
-                    spriteName = PixelSpriteType.SUN_MORNING.name,
-                    alertModeName = AlertMode.SCHEDULED_NOTIFICATION.name,
-                    frequencyTypeName = FrequencyType.SPECIFIC_TIME.name,
-                    hour = 8,
-                    minute = 0,
-                    targetCountPerDay = 1,
-                    daysOfWeekCsv = "1,2,3,4,5,6,7",
-                    isEnabled = true
-                ),
-                RoutineEntity(
-                    title = "Bloco de Leitura ou Estudo Leve",
-                    description = "30 minutos dedicados a algo que você gosta de aprender.",
-                    categoryName = RoutineCategory.FOCO.name,
-                    spriteName = PixelSpriteType.BOOK_FOCUS.name,
-                    alertModeName = AlertMode.SCHEDULED_NOTIFICATION.name,
-                    frequencyTypeName = FrequencyType.SPECIFIC_TIME.name,
-                    hour = 19,
-                    minute = 30,
-                    targetCountPerDay = 1,
-                    daysOfWeekCsv = "1,2,3,4,5",
-                    isEnabled = true
-                ),
-                RoutineEntity(
-                    title = "Desconecte das Telas & Preparar Sono",
-                    description = "Alarme gentil para encerrar o dia e garantir uma noite revigorante.",
-                    categoryName = RoutineCategory.DESCANSO.name,
-                    spriteName = PixelSpriteType.MOON_REST.name,
-                    alertModeName = AlertMode.PERSISTENT_ALARM.name,
-                    frequencyTypeName = FrequencyType.SPECIFIC_TIME.name,
-                    hour = 22,
-                    minute = 30,
-                    targetCountPerDay = 1,
-                    daysOfWeekCsv = "1,2,3,4,5,6,7",
-                    isEnabled = true
-                )
-            )
-            for (item in defaults) {
-                val id = routineDao.insertRoutine(item)
-                val saved = item.copy(id = id)
-                val nextTrigger = AlarmScheduler.scheduleRoutine(context, saved)
-                routineDao.updateRoutine(saved.copy(nextTriggerMillis = nextTrigger))
-            }
+    suspend fun clearAllUserData() {
+        val currentRoutines = routineDao.getAllRoutinesOnce()
+        for (r in currentRoutines) {
+            AlarmScheduler.cancelRoutine(context, r.id)
         }
-        preferencesRepository.markSeededDefaults()
+        routineDao.clearAllRoutines()
+        routineDao.clearAllCheckIns()
     }
 
     suspend fun saveRoutine(routine: RoutineEntity): RoutineEntity {

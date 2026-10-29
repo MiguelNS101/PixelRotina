@@ -242,6 +242,41 @@ object NotificationHelper {
             .build()
     }
 
+    fun showPomodoroIntervalFinishedNotification(
+        context: Context,
+        title: String,
+        message: String
+    ) {
+        ensureChannelsCreated(context)
+        if (!hasNotificationPermission(context)) return
+
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            49_990,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_SCHEDULED)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(contentPendingIntent)
+
+        try {
+            NotificationManagerCompat.from(context).notify(49_990, builder.build())
+        } catch (_: SecurityException) {
+            // Ignored if permission was revoked
+        }
+    }
+
     fun cancelNotification(context: Context, routineId: Long) {
         NotificationManagerCompat.from(context).cancel(notificationIdForRoutine(routineId))
     }

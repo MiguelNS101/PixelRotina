@@ -22,13 +22,19 @@ import com.example.data.RoutineEntity
 import com.example.data.RoutineRepository
 import com.example.data.UserPreferencesRepository
 import com.example.data.UserSettings
+import com.example.ui.components.PomodoroPhase
+import com.example.ui.components.PomodoroState
+import com.example.ui.components.PomodoroVisualAlert
 import com.example.ui.theme.PixelThemeType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -62,6 +68,25 @@ data class WeeklyReportSummary(
     val bestPeriodOfDay: String = "Manhã (08h–12h)"
 )
 
+data class MonthWeekBar(
+    val weekLabel: String,
+    val rangeLabel: String,
+    val completedCount: Int,
+    val snoozedCount: Int
+)
+
+data class MonthlyReportSummary(
+    val monthTitle: String = "",
+    val totalCompletedMonth: Int = 0,
+    val activeDaysInMonth: Int = 0,
+    val totalDaysInMonth: Int = 30,
+    val quickOkCountMonth: Int = 0,
+    val alarmDismissedCountMonth: Int = 0,
+    val weeksOfMonth: List<MonthWeekBar> = emptyList(),
+    val dailyCompletedCounts: List<Pair<Int, Int>> = emptyList(),
+    val categoryBreakdownMonth: List<CategoryReportItem> = emptyList()
+)
+
 data class CalendarMonthState(
     val year: Int = Calendar.getInstance().get(Calendar.YEAR),
     val monthZeroBased: Int = Calendar.getInstance().get(Calendar.MONTH),
@@ -79,8 +104,10 @@ data class RoutineUiState(
     val isEditorVisible: Boolean = false,
     val statusMessage: String? = null,
     val confettiTriggerId: Int = 0,
+    val pomodoroState: PomodoroState = PomodoroState(),
     val todayDateKey: String = DateUtils.todayDateKey(),
-    val weeklyReport: WeeklyReportSummary = WeeklyReportSummary()
+    val weeklyReport: WeeklyReportSummary = WeeklyReportSummary(),
+    val monthlyReport: MonthlyReportSummary = MonthlyReportSummary()
 ) {
     val todayIsoDay: Int
         get() = DateUtils.currentIsoDayOfWeek()
@@ -140,6 +167,8 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     private val calendarEventsFlow = MutableStateFlow<List<DeviceCalendarEvent>>(emptyList())
     private val statusMessageFlow = MutableStateFlow<String?>(null)
     private val confettiTriggerFlow = MutableStateFlow(0)
+    private val pomodoroStateFlow = MutableStateFlow(PomodoroState())
+    private var pomodoroTickerJob: Job? = null
 
     val uiState: StateFlow<RoutineUiState> = combine(
         repository.allRoutines,
@@ -150,9 +179,20 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             calendarMonthStateFlow,
             editorStateFlow,
             calendarEventsFlow,
-            combine(statusMessageFlow, confettiTriggerFlow) { msg, confetti -> msg to confetti }
-        ) { calState, editor, cal, msgAndConfetti ->
-            ExtraUiBundle(calState, editor, cal, msgAndConfetti.first, msgAndConfetti.second)
+            combine(
+                statusMessageFlow,
+                confettiTriggerFlow,
+                pomodoroStateFlow
+            ) { msg, confetti, pomodoro -> Triple(msg, confetti, pomodoro) }
+        ) { calState, editor, cal, msgConfettiPomodoro ->
+            ExtraUiBundle(
+                calState = calState,
+                editor = editor,
+                calendarEvents = cal,
+                statusMessage = msgConfettiPomodoro.first,
+                confettiTriggerId = msgConfettiPomodoro.second,
+                pomodoroState = msgConfettiPomodoro.third
+            )
         }
     ) { routines, logs, settings, tab, extra ->
         val todayKey = DateUtils.todayDateKey()
@@ -167,8 +207,10 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             isEditorVisible = extra.editor.first,
             statusMessage = extra.statusMessage,
             confettiTriggerId = extra.confettiTriggerId,
+            pomodoroState = extra.pomodoroState,
             todayDateKey = todayKey,
-            weeklyReport = buildWeeklyReport(routines, logs)
+            weeklyReport = buildWeeklyReport(routines, logs),
+            monthlyReport = buildMonthlyReport(routines, logs)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -178,13 +220,6 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         NotificationHelper.ensureChannelsCreated(appContext)
-        viewModelScope.launch {
-            repository.userSettings.collect { settings ->
-                if (!settings.hasSeededDefaults) {
-                    repository.ensureSeedRoutinesIfFirstRun(false)
-                }
-            }
-        }
         refreshDeviceCalendarEvents()
     }
 
@@ -462,6 +497,193 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun togglePomodoroExpanded() {
+        pomodoroStateFlow.update { it.copy(isExpanded = !it.isExpanded) }
+    }
+
+    fun selectPomodoroPhase(phase: PomodoroPhase) {
+        pomodoroTickerJob?.cancel()
+        val durationSec = phase.defaultMinutes * 60
+        pomodoroStateFlow.update {
+            it.copy(
+                phase = phase,
+                totalSeconds = durationSec,
+                remainingSeconds = durationSec,
+                isRunning = false
+            )
+        }
+    }
+
+    fun setPomodoroCustomDurationSeconds(seconds: Int) {
+        pomodoroTickerJob?.cancel()
+        val safeSeconds = seconds.coerceAtLeast(3)
+        pomodoroStateFlow.update {
+            it.copy(
+                totalSeconds = safeSeconds,
+                remainingSeconds = safeSeconds,
+                isRunning = false
+            )
+        }
+    }
+
+    fun togglePomodoroStartPause() {
+        val current = pomodoroStateFlow.value
+        if (current.isRunning) {
+            pomodoroTickerJob?.cancel()
+            pomodoroStateFlow.update { it.copy(isRunning = false) }
+        } else {
+            val startSecs = if (current.remainingSeconds <= 0) current.totalSeconds else current.remainingSeconds
+            pomodoroStateFlow.update {
+                it.copy(
+                    remainingSeconds = startSecs,
+                    isRunning = true,
+                    isExpanded = true,
+                    visualAlert = null
+                )
+            }
+            startPomodoroTicker()
+        }
+    }
+
+    fun resetPomodoroTimer() {
+        pomodoroTickerJob?.cancel()
+        pomodoroStateFlow.update {
+            it.copy(
+                remainingSeconds = it.totalSeconds,
+                isRunning = false
+            )
+        }
+    }
+
+    fun completePomodoroIntervalNow() {
+        pomodoroTickerJob?.cancel()
+        onPomodoroIntervalFinished()
+    }
+
+    fun linkRoutineToPomodoro(routine: RoutineEntity?, autoStartFocus: Boolean = false) {
+        if (routine == null) {
+            pomodoroStateFlow.update {
+                it.copy(
+                    linkedRoutineId = null,
+                    linkedRoutineTitle = null
+                )
+            }
+            showStatus("Pomodoro em modo de foco livre.")
+            return
+        }
+
+        val shouldSwitchToFocus = pomodoroStateFlow.value.phase != PomodoroPhase.FOCUS
+        val focusDuration = PomodoroPhase.FOCUS.defaultMinutes * 60
+        pomodoroStateFlow.update { state ->
+            state.copy(
+                phase = PomodoroPhase.FOCUS,
+                totalSeconds = if (shouldSwitchToFocus) focusDuration else state.totalSeconds,
+                remainingSeconds = if (shouldSwitchToFocus) focusDuration else state.remainingSeconds,
+                linkedRoutineId = routine.id,
+                linkedRoutineTitle = routine.title,
+                isExpanded = true,
+                visualAlert = null
+            )
+        }
+        if (autoStartFocus && !pomodoroStateFlow.value.isRunning) {
+            togglePomodoroStartPause()
+            showStatus("🍅 Foco iniciado em '${routine.title}'!")
+        } else {
+            showStatus("🍅 Tarefa '${routine.title}' vinculada ao Pomodoro!")
+        }
+    }
+
+    fun dismissPomodoroVisualAlert() {
+        pomodoroStateFlow.update { it.copy(visualAlert = null) }
+    }
+
+    fun completeLinkedRoutineFromPomodoroAlert(routineId: Long) {
+        val routine = uiState.value.routines.firstOrNull { it.id == routineId }
+        val alert = pomodoroStateFlow.value.visualAlert
+        if (routine != null) {
+            markRoutineDoneNow(routine, note = "Concluída após sessão de foco Pomodoro")
+        }
+        val nextPhase = if (alert != null && alert.completedCyclesToday > 0 && alert.completedCyclesToday % 4 == 0) {
+            PomodoroPhase.LONG_BREAK
+        } else {
+            PomodoroPhase.SHORT_BREAK
+        }
+        pomodoroStateFlow.update { it.copy(visualAlert = null) }
+        selectPomodoroPhase(nextPhase)
+        togglePomodoroStartPause()
+    }
+
+    private fun startPomodoroTicker() {
+        pomodoroTickerJob?.cancel()
+        pomodoroTickerJob = viewModelScope.launch {
+            while (pomodoroStateFlow.value.isRunning && pomodoroStateFlow.value.remainingSeconds > 0) {
+                delay(1000L)
+                val nextRemaining = (pomodoroStateFlow.value.remainingSeconds - 1).coerceAtLeast(0)
+                pomodoroStateFlow.update { it.copy(remainingSeconds = nextRemaining) }
+                if (nextRemaining <= 0) {
+                    onPomodoroIntervalFinished()
+                    break
+                }
+            }
+        }
+    }
+
+    private fun onPomodoroIntervalFinished() {
+        val finishedState = pomodoroStateFlow.value
+        val wasFocus = finishedState.phase == PomodoroPhase.FOCUS
+        val newCyclesCount = if (wasFocus) {
+            finishedState.completedFocusCyclesToday + 1
+        } else {
+            finishedState.completedFocusCyclesToday
+        }
+
+        val alert = if (wasFocus) {
+            val taskMention = finishedState.linkedRoutineTitle?.let { " em '$it'" } ?: ""
+            val isLongBreakNext = newCyclesCount % 4 == 0
+            PomodoroVisualAlert(
+                completedPhase = PomodoroPhase.FOCUS,
+                completedCyclesToday = newCyclesCount,
+                linkedRoutineId = finishedState.linkedRoutineId,
+                linkedRoutineTitle = finishedState.linkedRoutineTitle,
+                headline = "Sessão de Foco Concluída!$taskMention",
+                subtitle = if (isLongBreakNext) {
+                    "Você completou $newCyclesCount blocos hoje! Hora de uma Pausa Longa (15 min)."
+                } else {
+                    "Ciclo #$newCyclesCount finalizado com sucesso! Que tal uma Pausa Curta (5 min)?"
+                },
+                wellnessTip = "💧 Lembrete Pixel: Olhe para longe da tela por 20 segundos, beba água e solte os ombros."
+            )
+        } else {
+            PomodoroVisualAlert(
+                completedPhase = finishedState.phase,
+                completedCyclesToday = newCyclesCount,
+                linkedRoutineId = finishedState.linkedRoutineId,
+                linkedRoutineTitle = finishedState.linkedRoutineTitle,
+                headline = "${finishedState.phase.title} Finalizada!",
+                subtitle = "Energia renovada! Quando quiser, inicie o próximo bloco tranquilo de foco.",
+                wellnessTip = "✨ Respire fundo: escolha uma única tarefa por vez e mantenha um ritmo gentil."
+            )
+        }
+
+        pomodoroStateFlow.update {
+            it.copy(
+                isRunning = false,
+                remainingSeconds = it.totalSeconds,
+                isExpanded = true,
+                completedFocusCyclesToday = newCyclesCount,
+                visualAlert = alert
+            )
+        }
+
+        // Trigger pixel art confetti & system notification
+        confettiTriggerFlow.value = confettiTriggerFlow.value + 1
+        NotificationHelper.showPomodoroIntervalFinishedNotification(
+            context = appContext,
+            title = "🍅 ${alert.headline}",
+            message = "${alert.subtitle} ${alert.wellnessTip}"
+        )
+    }
+
     fun clearStatusMessage() {
         statusMessageFlow.value = null
     }
@@ -529,6 +751,79 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             bestPeriodOfDay = bestPeriod
         )
     }
+
+    private fun buildMonthlyReport(
+        routines: List<RoutineEntity>,
+        logs: List<CheckInLogEntity>
+    ): MonthlyReportSummary {
+        val now = Calendar.getInstance()
+        val year = now.get(Calendar.YEAR)
+        val monthZero = now.get(Calendar.MONTH)
+        val monthCal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, monthZero)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val totalDaysInMonth = monthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val monthPrefix = String.format(java.util.Locale.US, "%04d-%02d-", year, monthZero + 1)
+
+        val monthLogs = logs.filter { it.dateKey.startsWith(monthPrefix) }
+        val completedMonth = monthLogs.filter { it.status == CheckInStatus.COMPLETED }
+
+        val dailyCounts = (1..totalDaysInMonth).map { day ->
+            val key = DateUtils.dateKeyForYmd(year, monthZero, day)
+            val count = completedMonth.count { it.dateKey == key }
+            day to count
+        }
+
+        val activeDaysCount = dailyCounts.count { it.second > 0 }
+
+        val weekRanges = listOf(
+            Triple("SEM 1", 1, 7),
+            Triple("SEM 2", 8, 14),
+            Triple("SEM 3", 15, 21),
+            Triple("SEM 4", 22, 28),
+            Triple("SEM 5", 29, totalDaysInMonth)
+        ).filter { it.second <= totalDaysInMonth }
+
+        val weekBars = weekRanges.map { (label, startDay, endDay) ->
+            val keysInRange = (startDay..endDay).map { d ->
+                DateUtils.dateKeyForYmd(year, monthZero, d)
+            }.toSet()
+            val logsInBucket = monthLogs.filter { it.dateKey in keysInRange }
+            MonthWeekBar(
+                weekLabel = label,
+                rangeLabel = String.format(java.util.Locale.US, "%02d–%02d", startDay, endDay),
+                completedCount = logsInBucket.count { it.status == CheckInStatus.COMPLETED },
+                snoozedCount = logsInBucket.count { it.status == CheckInStatus.SNOOZED }
+            )
+        }
+
+        val categoryBreakdownMonth = RoutineCategory.entries.map { cat ->
+            val catRoutines = routines.filter { it.category == cat && it.isEnabled }
+            val monthlyTarget = catRoutines.sumOf { r ->
+                r.targetCountPerDay * r.activeDays.size.coerceAtLeast(1) * 4
+            }.coerceAtLeast(if (catRoutines.isNotEmpty()) 20 else 1)
+            val done = completedMonth.count { it.categorySnapshot == cat.name }
+            CategoryReportItem(
+                category = cat,
+                completedCount = done,
+                targetTotal = monthlyTarget
+            )
+        }
+
+        return MonthlyReportSummary(
+            monthTitle = DateUtils.formatMonthYearPt(year, monthZero),
+            totalCompletedMonth = completedMonth.size,
+            activeDaysInMonth = activeDaysCount,
+            totalDaysInMonth = totalDaysInMonth,
+            quickOkCountMonth = completedMonth.count { it.source == CheckInSource.NOTIFICATION_OK },
+            alarmDismissedCountMonth = completedMonth.count { it.source == CheckInSource.ALARM_DISMISSED },
+            weeksOfMonth = weekBars,
+            dailyCompletedCounts = dailyCounts,
+            categoryBreakdownMonth = categoryBreakdownMonth
+        )
+    }
 }
 
 private data class ExtraUiBundle(
@@ -536,5 +831,6 @@ private data class ExtraUiBundle(
     val editor: Pair<Boolean, RoutineEntity?>,
     val calendarEvents: List<DeviceCalendarEvent>,
     val statusMessage: String?,
-    val confettiTriggerId: Int
+    val confettiTriggerId: Int,
+    val pomodoroState: PomodoroState
 )

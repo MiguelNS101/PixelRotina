@@ -94,4 +94,16 @@ class ExampleRobolectricTest {
         assertEquals(1, restoredRoutines.size)
         assertEquals(1, restoredLogs.size)
     }
+
+    @Test
+    fun `pomodoro state formats time and computes progress accurately`() {
+        val state = com.example.ui.components.PomodoroState(
+            phase = com.example.ui.components.PomodoroPhase.FOCUS,
+            totalSeconds = 1500,
+            remainingSeconds = 750,
+            isRunning = true
+        )
+        assertEquals("12:30", state.formattedTime)
+        assertEquals(0.5f, state.progressFraction, 0.01f)
+    }
 }
