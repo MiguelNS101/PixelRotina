@@ -25,12 +25,14 @@ class AlarmRingingService : Service() {
         val routineId = intent?.getLongExtra(AlarmScheduler.EXTRA_ROUTINE_ID, 1L) ?: 1L
         val title = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE) ?: "Rotina de Bem-Estar"
         val description = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_DESC) ?: ""
+        val iconName = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_ICON) ?: ""
 
         val notification = NotificationHelper.buildPersistentAlarmForegroundNotification(
             context = this,
             routineId = routineId,
             title = title,
-            description = description
+            description = description,
+            iconName = iconName
         )
         val notifId = NotificationHelper.notificationIdForRoutine(routineId)
 
@@ -54,6 +56,7 @@ class AlarmRingingService : Service() {
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_DESC, description)
+                putExtra(AlarmScheduler.EXTRA_ROUTINE_ICON, iconName)
             }
             startActivity(activityIntent)
         } catch (_: Exception) {
@@ -144,12 +147,14 @@ class AlarmRingingService : Service() {
             context: Context,
             routineId: Long,
             title: String,
-            description: String
+            description: String,
+            iconName: String = ""
         ) {
             val serviceIntent = Intent(context, AlarmRingingService::class.java).apply {
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_DESC, description)
+                putExtra(AlarmScheduler.EXTRA_ROUTINE_ICON, iconName)
             }
             ContextCompat.startForegroundService(context, serviceIntent)
         }

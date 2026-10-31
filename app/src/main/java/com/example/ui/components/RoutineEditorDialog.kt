@@ -140,7 +140,7 @@ fun RoutineEditorDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
-                    text = "CATEGORIA & ÍCONE PIXEL",
+                    text = "CATEGORIA DA ROTINA (${RoutineCategory.entries.size} OPÇÕES)",
                     style = MaterialTheme.typography.titleSmall,
                     color = palette.textSecondary
                 )
@@ -167,6 +167,7 @@ fun RoutineEditorDialog(
                                     sprite = item.defaultSprite
                                 }
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("category_chip_${item.name.lowercase()}")
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 PixelSpriteIcon(
@@ -181,6 +182,54 @@ fun RoutineEditorDialog(
                                     color = if (isSelected) palette.onPrimary else palette.textPrimary
                                 )
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "ÍCONE PIXEL CUSTOMIZADO (${sprite.labelPt.uppercase()})",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.textSecondary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PixelSpriteType.entries.forEach { iconType ->
+                        val isSelected = sprite == iconType
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isSelected) palette.secondary else palette.surfaceElevated
+                                )
+                                .border(
+                                    width = if (isSelected) 2.5.dp else 1.5.dp,
+                                    color = if (isSelected) palette.primary else palette.pixelBorder,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { sprite = iconType }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("custom_icon_${iconType.name.lowercase()}"),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            PixelSpriteIcon(
+                                spriteType = iconType,
+                                modifier = Modifier.size(26.dp),
+                                tintOverride = if (isSelected) palette.onSecondary else null
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = iconType.labelPt,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) palette.onSecondary else palette.textPrimary,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }

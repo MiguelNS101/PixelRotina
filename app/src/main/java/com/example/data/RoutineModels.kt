@@ -14,10 +14,16 @@ enum class RoutineCategory(
 ) {
     HIDRATACAO("Hidratação", PixelSpriteType.WATER_DROP),
     CORPO_MENTE("Corpo & Mente", PixelSpriteType.LEAF_WELLNESS),
-    DESCANSO("Sono & Descanso", PixelSpriteType.MOON_REST),
-    ALIMENTACAO("Nutrição & Energia", PixelSpriteType.SUN_MORNING),
+    EXERCICIO("Treino & Movimento", PixelSpriteType.DUMBBELL_FITNESS),
+    MEDITACAO("Meditação & Calma", PixelSpriteType.LOTUS_MIND),
+    SAUDE("Vitaminas & Saúde", PixelSpriteType.PILL_HEALTH),
+    ALIMENTACAO("Nutrição & Café", PixelSpriteType.COFFEE_MUG),
     FOCO("Foco & Estudos", PixelSpriteType.BOOK_FOCUS),
-    LAZER("Autocuidado & Lazer", PixelSpriteType.HEART_CARE)
+    CRIATIVIDADE("Música & Arte", PixelSpriteType.MUSIC_NOTE),
+    CASA("Casa & Ordem", PixelSpriteType.HOME_CARE),
+    PETS("Pets & Passeio", PixelSpriteType.PAW_PET),
+    LAZER("Autocuidado & Hobby", PixelSpriteType.GAMEPAD_HOBBY),
+    DESCANSO("Sono & Descanso", PixelSpriteType.MOON_REST)
 }
 
 enum class AlertMode(

@@ -87,6 +87,25 @@ data class MonthlyReportSummary(
     val categoryBreakdownMonth: List<CategoryReportItem> = emptyList()
 )
 
+data class DayMedalHistoryItem(
+    val dateKey: String,
+    val dayShortLabel: String,
+    val completionPercent: Int,
+    val medal: com.example.ui.components.PixelMedalTier
+)
+
+data class StreakMedalSummary(
+    val hasActiveRoutinesToday: Boolean = false,
+    val todayCompletedCount: Int = 0,
+    val todayTargetCount: Int = 0,
+    val todayCompletionPercent: Int = 0,
+    val todayMedal: com.example.ui.components.PixelMedalTier = com.example.ui.components.PixelMedalTier.NONE,
+    val currentStreakDays: Int = 0,
+    val goldStreakDays: Int = 0,
+    val bestStreakDays: Int = 0,
+    val recent7DaysMedals: List<DayMedalHistoryItem> = emptyList()
+)
+
 data class CalendarMonthState(
     val year: Int = Calendar.getInstance().get(Calendar.YEAR),
     val monthZeroBased: Int = Calendar.getInstance().get(Calendar.MONTH),
@@ -106,6 +125,7 @@ data class RoutineUiState(
     val confettiTriggerId: Int = 0,
     val pomodoroState: PomodoroState = PomodoroState(),
     val todayDateKey: String = DateUtils.todayDateKey(),
+    val streakMedalSummary: StreakMedalSummary = StreakMedalSummary(),
     val weeklyReport: WeeklyReportSummary = WeeklyReportSummary(),
     val monthlyReport: MonthlyReportSummary = MonthlyReportSummary()
 ) {
@@ -209,6 +229,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             confettiTriggerId = extra.confettiTriggerId,
             pomodoroState = extra.pomodoroState,
             todayDateKey = todayKey,
+            streakMedalSummary = buildStreakMedalSummary(routines, logs, todayKey),
             weeklyReport = buildWeeklyReport(routines, logs),
             monthlyReport = buildMonthlyReport(routines, logs)
         )
@@ -326,6 +347,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
 
     fun markRoutineDoneNow(routine: RoutineEntity, note: String = "") {
         viewModelScope.launch {
+            val previousMedal = uiState.value.streakMedalSummary.todayMedal
             AlarmRingingService.stopAlarm(appContext)
             NotificationHelper.cancelNotification(appContext, routine.id)
             repository.recordCheckIn(
@@ -336,7 +358,35 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             )
             // Trigger 8-bit pixel confetti burst!
             confettiTriggerFlow.value = confettiTriggerFlow.value + 1
-            showStatus("🎉 Boa! '${routine.title}' concluída!")
+
+            val currentState = uiState.value
+            val activeToday = currentState.todayActiveRoutines
+            val totalTarget = activeToday.sumOf { it.targetCountPerDay }.coerceAtLeast(1)
+            val updatedDone = activeToday.sumOf { r ->
+                val baseDone = currentState.todayCompletedCountByRoutine[r.id] ?: 0
+                val afterIncrement = if (r.id == routine.id) baseDone + 1 else baseDone
+                afterIncrement.coerceAtMost(r.targetCountPerDay)
+            }
+            val newPercent = ((updatedDone * 100f) / totalTarget.toFloat()).toInt().coerceIn(0, 100)
+            val newMedal = com.example.ui.components.PixelMedalTier.fromCompletionPercent(
+                percent = newPercent,
+                hasActiveRoutines = activeToday.isNotEmpty()
+            )
+
+            val celebrationMsg = if (newMedal.thresholdPercent > previousMedal.thresholdPercent) {
+                when (newMedal) {
+                    com.example.ui.components.PixelMedalTier.GOLD ->
+                        "🥇 Dia 100% Completo! Medalha de Ouro conquistada com '${routine.title}'!"
+                    com.example.ui.components.PixelMedalTier.SILVER ->
+                        "🥈 75% do dia concluído! Medalha de Prata conquistada!"
+                    com.example.ui.components.PixelMedalTier.BRONZE ->
+                        "🥉 50% do dia concluído! Medalha de Bronze conquistada!"
+                    else -> "🎉 Boa! '${routine.title}' concluída!"
+                }
+            } else {
+                "🎉 Boa! '${routine.title}' concluída!"
+            }
+            showStatus(celebrationMsg)
         }
     }
 
@@ -677,10 +727,14 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
 
         // Trigger pixel art confetti & system notification
         confettiTriggerFlow.value = confettiTriggerFlow.value + 1
+        val linkedSprite = finishedState.linkedRoutineId?.let { id ->
+            uiState.value.routines.firstOrNull { it.id == id }?.sprite
+        } ?: com.example.ui.components.PixelSpriteType.BOOK_FOCUS
         NotificationHelper.showPomodoroIntervalFinishedNotification(
             context = appContext,
             title = "🍅 ${alert.headline}",
-            message = "${alert.subtitle} ${alert.wellnessTip}"
+            message = "${alert.subtitle} ${alert.wellnessTip}",
+            spriteType = linkedSprite
         )
     }
 
@@ -690,6 +744,133 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
 
     private fun showStatus(msg: String) {
         statusMessageFlow.value = msg
+    }
+
+    private fun buildStreakMedalSummary(
+        routines: List<RoutineEntity>,
+        logs: List<CheckInLogEntity>,
+        todayKey: String
+    ): StreakMedalSummary {
+        return computeStreakMedalSummary(routines, logs, todayKey)
+    }
+
+    companion object {
+        fun computeStreakMedalSummary(
+            routines: List<RoutineEntity>,
+            logs: List<CheckInLogEntity>,
+            todayKey: String = DateUtils.todayDateKey()
+        ): StreakMedalSummary {
+            val enabledRoutines = routines.filter { it.isEnabled }
+            val completedLogsByDate = logs
+                .filter { it.status == CheckInStatus.COMPLETED }
+                .groupBy { it.dateKey }
+
+            fun evaluateDay(dateKey: String): Pair<Int, com.example.ui.components.PixelMedalTier> {
+                val isoDay = DateUtils.isoDayOfWeekForDateKey(dateKey)
+                val activeForDay = enabledRoutines.filter { isoDay in it.activeDays }
+                val logsForDay = completedLogsByDate[dateKey].orEmpty()
+
+                if (activeForDay.isEmpty()) {
+                    return if (logsForDay.isNotEmpty()) {
+                        100 to com.example.ui.components.PixelMedalTier.GOLD
+                    } else {
+                        0 to com.example.ui.components.PixelMedalTier.NONE
+                    }
+                }
+
+                val targetTotal = activeForDay.sumOf { it.targetCountPerDay }.coerceAtLeast(1)
+                val countByRoutine = logsForDay.groupingBy { it.routineId }.eachCount()
+                val doneFromActive = activeForDay.sumOf { r ->
+                    (countByRoutine[r.id] ?: 0).coerceAtMost(r.targetCountPerDay)
+                }
+                val effectiveDone = maxOf(doneFromActive, logsForDay.size.coerceAtMost(targetTotal))
+                val percent = ((effectiveDone * 100f) / targetTotal.toFloat()).toInt().coerceIn(0, 100)
+                val medal = com.example.ui.components.PixelMedalTier.fromCompletionPercent(
+                    percent = percent,
+                    hasActiveRoutines = true
+                )
+                return percent to medal
+            }
+
+            val todayIso = DateUtils.isoDayOfWeekForDateKey(todayKey)
+            val todayActive = enabledRoutines.filter { todayIso in it.activeDays }
+            val todayLogs = completedLogsByDate[todayKey].orEmpty()
+            val todayCountByRoutine = todayLogs.groupingBy { it.routineId }.eachCount()
+            val todayTarget = todayActive.sumOf { it.targetCountPerDay }
+            val todayDone = todayActive.sumOf { r ->
+                (todayCountByRoutine[r.id] ?: 0).coerceAtMost(r.targetCountPerDay)
+            }
+            val (todayPercent, todayMedal) = evaluateDay(todayKey)
+
+            // Evaluate last 30 days for streak & best streak
+            val last30Offsets = (-29..0).toList()
+            val dayEvaluations = last30Offsets.map { offset ->
+                val key = DateUtils.dateKeyForOffsetDays(offset)
+                val (pct, medal) = evaluateDay(key)
+                Triple(key, pct, medal)
+            }
+
+            // Consecutive streak of medal days (>= 50% completion) up to today (or yesterday if today is still in progress)
+            var currentStreak = 0
+            val reversed = dayEvaluations.asReversed()
+            for ((idx, item) in reversed.withIndex()) {
+                val medal = item.third
+                if (medal != com.example.ui.components.PixelMedalTier.NONE) {
+                    currentStreak++
+                } else if (idx == 0) {
+                    // Today hasn't reached 50% yet; check if yesterday had an active streak
+                    continue
+                } else {
+                    break
+                }
+            }
+
+            // Consecutive Gold streak (100% completion)
+            var goldStreak = 0
+            for ((idx, item) in reversed.withIndex()) {
+                val medal = item.third
+                if (medal == com.example.ui.components.PixelMedalTier.GOLD) {
+                    goldStreak++
+                } else if (idx == 0) {
+                    continue
+                } else {
+                    break
+                }
+            }
+
+            // Best streak in the 30-day window
+            var bestStreak = 0
+            var running = 0
+            for (item in dayEvaluations) {
+                if (item.third != com.example.ui.components.PixelMedalTier.NONE) {
+                    running++
+                    if (running > bestStreak) bestStreak = running
+                } else {
+                    running = 0
+                }
+            }
+
+            val recent7 = dayEvaluations.takeLast(7).map { (key, pct, medal) ->
+                DayMedalHistoryItem(
+                    dateKey = key,
+                    dayShortLabel = DateUtils.formatDayShortPt(key),
+                    completionPercent = pct,
+                    medal = medal
+                )
+            }
+
+            return StreakMedalSummary(
+                hasActiveRoutinesToday = todayActive.isNotEmpty(),
+                todayCompletedCount = todayDone,
+                todayTargetCount = todayTarget,
+                todayCompletionPercent = todayPercent,
+                todayMedal = todayMedal,
+                currentStreakDays = currentStreak,
+                goldStreakDays = goldStreak,
+                bestStreakDays = maxOf(bestStreak, currentStreak),
+                recent7DaysMedals = recent7
+            )
+        }
     }
 
     private fun buildWeeklyReport(

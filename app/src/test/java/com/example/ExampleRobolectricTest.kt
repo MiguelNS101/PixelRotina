@@ -106,4 +106,55 @@ class ExampleRobolectricTest {
         assertEquals("12:30", state.formattedTime)
         assertEquals(0.5f, state.progressFraction, 0.01f)
     }
+
+    @Test
+    fun `medal tiers and streak summary compute bronze 50 silver 75 and gold 100 accurately`() {
+        assertEquals(
+            com.example.ui.components.PixelMedalTier.NONE,
+            com.example.ui.components.PixelMedalTier.fromCompletionPercent(49, true)
+        )
+        assertEquals(
+            com.example.ui.components.PixelMedalTier.BRONZE,
+            com.example.ui.components.PixelMedalTier.fromCompletionPercent(50, true)
+        )
+        assertEquals(
+            com.example.ui.components.PixelMedalTier.SILVER,
+            com.example.ui.components.PixelMedalTier.fromCompletionPercent(75, true)
+        )
+        assertEquals(
+            com.example.ui.components.PixelMedalTier.GOLD,
+            com.example.ui.components.PixelMedalTier.fromCompletionPercent(100, true)
+        )
+
+        val todayKey = DateUtils.todayDateKey()
+        val routines = listOf(
+            RoutineEntity(
+                id = 1L,
+                title = "Treino",
+                categoryName = RoutineCategory.EXERCICIO.name,
+                targetCountPerDay = 4,
+                isEnabled = true
+            )
+        )
+        val logsGold = (1..4).map { idx ->
+            CheckInLogEntity(
+                id = idx.toLong(),
+                routineId = 1L,
+                routineTitleSnapshot = "Treino",
+                categorySnapshot = RoutineCategory.EXERCICIO.name,
+                dateKey = todayKey,
+                statusName = CheckInStatus.COMPLETED.name,
+                sourceName = CheckInSource.IN_APP.name
+            )
+        }
+        val summary = com.example.ui.RoutineViewModel.computeStreakMedalSummary(routines, logsGold, todayKey)
+        assertEquals(100, summary.todayCompletionPercent)
+        assertEquals(com.example.ui.components.PixelMedalTier.GOLD, summary.todayMedal)
+        assertTrue(summary.currentStreakDays >= 1)
+
+        val largeBmp = with(com.example.ui.components.PixelSpriteType.DUMBBELL_FITNESS) {
+            com.example.ui.components.PixelSpriteType.DUMBBELL_FITNESS
+        }
+        assertEquals("DUMBBELL_FITNESS", largeBmp.name)
+    }
 }

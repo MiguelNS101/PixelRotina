@@ -57,16 +57,24 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class PixelSpriteType {
-    WATER_DROP,
-    SUN_MORNING,
-    MOON_REST,
-    LEAF_WELLNESS,
-    HEART_CARE,
-    ALARM_BELL,
-    BOOK_FOCUS,
-    CALENDAR_GRID,
-    SPARKLE_OK
+enum class PixelSpriteType(val labelPt: String) {
+    WATER_DROP("Gota d'Água"),
+    SUN_MORNING("Sol Radiante"),
+    MOON_REST("Lua & Sono"),
+    LEAF_WELLNESS("Folha Verde"),
+    HEART_CARE("Coração"),
+    ALARM_BELL("Sino Alarme"),
+    BOOK_FOCUS("Livro & Estudo"),
+    CALENDAR_GRID("Calendário"),
+    SPARKLE_OK("Estrela Pixel"),
+    DUMBBELL_FITNESS("Halter Treino"),
+    PILL_HEALTH("Cápsula Saúde"),
+    COFFEE_MUG("Xícara Café/Chá"),
+    MUSIC_NOTE("Nota Musical"),
+    HOME_CARE("Casa & Ordem"),
+    PAW_PET("Patinha Pet"),
+    LOTUS_MIND("Flor de Lótus"),
+    GAMEPAD_HOBBY("Controle Retrô")
 }
 
 @Composable
@@ -406,98 +414,7 @@ fun PixelSpriteIcon(
     description: String = spriteType.name
 ) {
     val palette = LocalPixelPalette.current
-    val grid: List<String> = when (spriteType) {
-        PixelSpriteType.WATER_DROP -> listOf(
-            "...11...",
-            "..1111..",
-            ".121111.",
-            ".121111.",
-            "11211111",
-            "11111111",
-            ".111111.",
-            "..1111.."
-        )
-        PixelSpriteType.SUN_MORNING -> listOf(
-            "1..11..1",
-            ".112211.",
-            "..2222..",
-            "11222211",
-            "11222211",
-            "..2222..",
-            ".112211.",
-            "1..11..1"
-        )
-        PixelSpriteType.MOON_REST -> listOf(
-            "..1111..",
-            ".11221..",
-            "1122....",
-            "112.....",
-            "112.....",
-            "1122....",
-            ".11221..",
-            "..1111.."
-        )
-        PixelSpriteType.LEAF_WELLNESS -> listOf(
-            "....1111",
-            "..111221",
-            ".1122111",
-            ".121111.",
-            ".11111..",
-            "..111...",
-            ".11.....",
-            "1......."
-        )
-        PixelSpriteType.HEART_CARE -> listOf(
-            ".11..11.",
-            "12211111",
-            "12111111",
-            "11111111",
-            ".111111.",
-            "..1111..",
-            "...11...",
-            "........"
-        )
-        PixelSpriteType.ALARM_BELL -> listOf(
-            "11....11",
-            ".111111.",
-            ".122111.",
-            "11211111",
-            "11111111",
-            "11111111",
-            "..1..1..",
-            "........"
-        )
-        PixelSpriteType.BOOK_FOCUS -> listOf(
-            ".111111.",
-            "12222211",
-            "12111211",
-            "12222211",
-            "12111211",
-            "12222211",
-            "11111111",
-            ".111111."
-        )
-        PixelSpriteType.CALENDAR_GRID -> listOf(
-            ".1.11.1.",
-            "11111111",
-            "12222221",
-            "12112121",
-            "12222221",
-            "12122121",
-            "12222221",
-            "11111111"
-        )
-        PixelSpriteType.SPARKLE_OK -> listOf(
-            "...11...",
-            "...11...",
-            ".112211.",
-            "11222211",
-            "11222211",
-            ".112211.",
-            "...11...",
-            "...11..."
-        )
-    }
+    val grid = spriteType.pixelGrid()
 
     val mainColor = tintOverride ?: when (spriteType) {
         PixelSpriteType.WATER_DROP -> palette.waterCyan
@@ -509,6 +426,14 @@ fun PixelSpriteIcon(
         PixelSpriteType.BOOK_FOCUS -> palette.primary
         PixelSpriteType.CALENDAR_GRID -> palette.secondary
         PixelSpriteType.SPARKLE_OK -> palette.wellnessGreen
+        PixelSpriteType.DUMBBELL_FITNESS -> palette.alarmCoral
+        PixelSpriteType.PILL_HEALTH -> palette.waterCyan
+        PixelSpriteType.COFFEE_MUG -> palette.snoozeAmber
+        PixelSpriteType.MUSIC_NOTE -> palette.primary
+        PixelSpriteType.HOME_CARE -> palette.secondary
+        PixelSpriteType.PAW_PET -> palette.snoozeAmber
+        PixelSpriteType.LOTUS_MIND -> palette.wellnessGreen
+        PixelSpriteType.GAMEPAD_HOBBY -> palette.accent
     }
     val highlightColor = Color.White.copy(alpha = 0.85f)
 
@@ -535,3 +460,495 @@ fun PixelSpriteIcon(
         }
     }
 }
+
+fun PixelSpriteType.pixelGrid(): List<String> = when (this) {
+    PixelSpriteType.WATER_DROP -> listOf(
+        "...11...",
+        "..1111..",
+        ".121111.",
+        ".121111.",
+        "11211111",
+        "11111111",
+        ".111111.",
+        "..1111.."
+    )
+    PixelSpriteType.SUN_MORNING -> listOf(
+        "1..11..1",
+        ".112211.",
+        "..2222..",
+        "11222211",
+        "11222211",
+        "..2222..",
+        ".112211.",
+        "1..11..1"
+    )
+    PixelSpriteType.MOON_REST -> listOf(
+        "..1111..",
+        ".11221..",
+        "1122....",
+        "112.....",
+        "112.....",
+        "1122....",
+        ".11221..",
+        "..1111.."
+    )
+    PixelSpriteType.LEAF_WELLNESS -> listOf(
+        "....1111",
+        "..111221",
+        ".1122111",
+        ".121111.",
+        ".11111..",
+        "..111...",
+        ".11.....",
+        "1......."
+    )
+    PixelSpriteType.HEART_CARE -> listOf(
+        ".11..11.",
+        "12211111",
+        "12111111",
+        "11111111",
+        ".111111.",
+        "..1111..",
+        "...11...",
+        "........"
+    )
+    PixelSpriteType.ALARM_BELL -> listOf(
+        "11....11",
+        ".111111.",
+        ".122111.",
+        "11211111",
+        "11111111",
+        "11111111",
+        "..1..1..",
+        "........"
+    )
+    PixelSpriteType.BOOK_FOCUS -> listOf(
+        ".111111.",
+        "12222211",
+        "12111211",
+        "12222211",
+        "12111211",
+        "12222211",
+        "11111111",
+        ".111111."
+    )
+    PixelSpriteType.CALENDAR_GRID -> listOf(
+        ".1.11.1.",
+        "11111111",
+        "12222221",
+        "12112121",
+        "12222221",
+        "12122121",
+        "12222221",
+        "11111111"
+    )
+    PixelSpriteType.SPARKLE_OK -> listOf(
+        "...11...",
+        "...11...",
+        ".112211.",
+        "11222211",
+        "11222211",
+        ".112211.",
+        "...11...",
+        "...11..."
+    )
+    PixelSpriteType.DUMBBELL_FITNESS -> listOf(
+        ".11..11.",
+        "121..121",
+        "11122111",
+        "11122111",
+        "121..121",
+        ".11..11.",
+        "........",
+        "........"
+    )
+    PixelSpriteType.PILL_HEALTH -> listOf(
+        "....111.",
+        "...12211",
+        "..121111",
+        ".11111..",
+        "12211...",
+        "1221....",
+        ".11.....",
+        "........"
+    )
+    PixelSpriteType.COFFEE_MUG -> listOf(
+        "..2..2..",
+        ".2..2...",
+        "111111..",
+        "12222111",
+        "111111.1",
+        "11111111",
+        ".11111..",
+        "1111111."
+    )
+    PixelSpriteType.MUSIC_NOTE -> listOf(
+        "..111111",
+        "..122221",
+        "..11...1",
+        "..11...1",
+        ".111..11",
+        "1211.121",
+        "111..111",
+        "........"
+    )
+    PixelSpriteType.HOME_CARE -> listOf(
+        "...11...",
+        "..1221..",
+        ".112211.",
+        "11111111",
+        ".122221.",
+        ".121121.",
+        ".121121.",
+        ".111111."
+    )
+    PixelSpriteType.PAW_PET -> listOf(
+        ".11..11.",
+        "121..121",
+        "....11..",
+        "11..121.",
+        "121111..",
+        ".112211.",
+        ".122221.",
+        "..1111.."
+    )
+    PixelSpriteType.LOTUS_MIND -> listOf(
+        "...11...",
+        ".1.12.1.",
+        "11122111",
+        "12122121",
+        "11111111",
+        ".112211.",
+        "..1111..",
+        "...22..."
+    )
+    PixelSpriteType.GAMEPAD_HOBBY -> listOf(
+        "........",
+        ".111111.",
+        "11211121",
+        "12221211",
+        "11211111",
+        "111..111",
+        ".1....1.",
+        "........"
+    )
+}
+
+fun PixelSpriteType.defaultMainColorArgb(): Int = when (this) {
+    PixelSpriteType.WATER_DROP -> 0xFF38BDF8.toInt()
+    PixelSpriteType.SUN_MORNING -> 0xFFF59E0B.toInt()
+    PixelSpriteType.MOON_REST -> 0xFF818CF8.toInt()
+    PixelSpriteType.LEAF_WELLNESS -> 0xFF34D399.toInt()
+    PixelSpriteType.HEART_CARE -> 0xFFF43F5E.toInt()
+    PixelSpriteType.ALARM_BELL -> 0xFFFB7185.toInt()
+    PixelSpriteType.BOOK_FOCUS -> 0xFFA78BFA.toInt()
+    PixelSpriteType.CALENDAR_GRID -> 0xFF60A5FA.toInt()
+    PixelSpriteType.SPARKLE_OK -> 0xFF10B981.toInt()
+    PixelSpriteType.DUMBBELL_FITNESS -> 0xFFF97316.toInt()
+    PixelSpriteType.PILL_HEALTH -> 0xFF2DD4BF.toInt()
+    PixelSpriteType.COFFEE_MUG -> 0xFFD97706.toInt()
+    PixelSpriteType.MUSIC_NOTE -> 0xFFC084FC.toInt()
+    PixelSpriteType.HOME_CARE -> 0xFF60A5FA.toInt()
+    PixelSpriteType.PAW_PET -> 0xFFFBBF24.toInt()
+    PixelSpriteType.LOTUS_MIND -> 0xFF4ADE80.toInt()
+    PixelSpriteType.GAMEPAD_HOBBY -> 0xFFF472B6.toInt()
+}
+
+/**
+ * Renders the 8x8 PixelSpriteType into a crisp Android Bitmap with a retro pixel frame
+ * for use as the notification LargeIcon.
+ */
+fun PixelSpriteType.createNotificationLargeBitmap(sizePx: Int = 128): android.graphics.Bitmap {
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val borderPx = (sizePx * 0.06f).coerceAtLeast(3f)
+    val padPx = (sizePx * 0.16f).coerceAtLeast(8f)
+
+    // Outer pixel border
+    paint.color = 0xFF1E1E2E.toInt()
+    canvas.drawRect(0f, 0f, sizePx.toFloat(), sizePx.toFloat(), paint)
+
+    // Inner dark badge background
+    paint.color = 0xFF282A3A.toInt()
+    canvas.drawRect(
+        borderPx,
+        borderPx,
+        sizePx - borderPx,
+        sizePx - borderPx,
+        paint
+    )
+
+    val grid = pixelGrid()
+    val mainColor = defaultMainColorArgb()
+    val highlightColor = 0xEEFFFFFF.toInt()
+    val cellW = (sizePx - padPx * 2f) / 8f
+    val cellH = (sizePx - padPx * 2f) / 8f
+
+    grid.forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            when (ch) {
+                '1' -> paint.color = mainColor
+                '2' -> paint.color = highlightColor
+                else -> paint.color = 0
+            }
+            if (paint.color != 0) {
+                val left = padPx + colIdx * cellW
+                val top = padPx + rowIdx * cellH
+                canvas.drawRect(
+                    left,
+                    top,
+                    left + cellW + 0.5f,
+                    top + cellH + 0.5f,
+                    paint
+                )
+            }
+        }
+    }
+
+    return bmp
+}
+
+/**
+ * Renders a monochrome silhouette Android Bitmap of the 8x8 PixelSpriteType
+ * for use with IconCompat.createWithBitmap(...) as the notification SmallIcon.
+ */
+fun PixelSpriteType.createNotificationSmallBitmap(sizePx: Int = 64): android.graphics.Bitmap {
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+        color = 0xFFFFFFFF.toInt()
+    }
+
+    val padPx = sizePx * 0.08f
+    val cellW = (sizePx - padPx * 2f) / 8f
+    val cellH = (sizePx - padPx * 2f) / 8f
+
+    pixelGrid().forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            if (ch == '1' || ch == '2') {
+                val left = padPx + colIdx * cellW
+                val top = padPx + rowIdx * cellH
+                canvas.drawRect(
+                    left,
+                    top,
+                    left + cellW + 0.5f,
+                    top + cellH + 0.5f,
+                    paint
+                )
+            }
+        }
+    }
+    return bmp
+}
+
+/**
+ * Daily completion medal tiers:
+ * - BRONZE: 50%+ of daily routine check-ins completed
+ * - SILVER: 75%+ of daily routine check-ins completed
+ * - GOLD: 100% of daily routine check-ins completed (all tasks of the day done!)
+ */
+enum class PixelMedalTier(
+    val thresholdPercent: Int,
+    val titlePt: String,
+    val shortLabelPt: String,
+    val encouragementPt: String,
+    val discMainColor: Color,
+    val discHighlightColor: Color,
+    val discShadowColor: Color,
+    val ribbonColor: Color
+) {
+    NONE(
+        thresholdPercent = 0,
+        titlePt = "Sem Medalha",
+        shortLabelPt = "META 50%",
+        encouragementPt = "Complete 50% das tarefas de hoje para conquistar a Medalha de Bronze!",
+        discMainColor = Color(0xFF565B75),
+        discHighlightColor = Color(0xFF7B819E),
+        discShadowColor = Color(0xFF393D52),
+        ribbonColor = Color(0xFF4A4E69)
+    ),
+    BRONZE(
+        thresholdPercent = 50,
+        titlePt = "Medalha de Bronze",
+        shortLabelPt = "BRONZE • 50%",
+        encouragementPt = "Medalha de Bronze conquistada (50%+)! Rumo à Prata (75%)!",
+        discMainColor = Color(0xFFD9823B),
+        discHighlightColor = Color(0xFFF6B27A),
+        discShadowColor = Color(0xFF8F4E19),
+        ribbonColor = Color(0xFF38BDF8)
+    ),
+    SILVER(
+        thresholdPercent = 75,
+        titlePt = "Medalha de Prata",
+        shortLabelPt = "PRATA • 75%",
+        encouragementPt = "Medalha de Prata conquistada (75%+)! Falta pouco para o Ouro (100%)!",
+        discMainColor = Color(0xFFC7D2E6),
+        discHighlightColor = Color(0xFFF8FAFC),
+        discShadowColor = Color(0xFF7C8BA6),
+        ribbonColor = Color(0xFFA78BFA)
+    ),
+    GOLD(
+        thresholdPercent = 100,
+        titlePt = "Medalha de Ouro",
+        shortLabelPt = "OURO • 100%",
+        encouragementPt = "Dia 100% Completo! Você conquistou a Medalha de Ouro de hoje!",
+        discMainColor = Color(0xFFFACC15),
+        discHighlightColor = Color(0xFFFEF08A),
+        discShadowColor = Color(0xFFCA8A04),
+        ribbonColor = Color(0xFFF43F5E)
+    );
+
+    companion object {
+        fun fromCompletionPercent(percent: Int, hasActiveRoutines: Boolean = true): PixelMedalTier {
+            if (!hasActiveRoutines) return NONE
+            return when {
+                percent >= 100 -> GOLD
+                percent >= 75 -> SILVER
+                percent >= 50 -> BRONZE
+                else -> NONE
+            }
+        }
+    }
+}
+
+/**
+ * 10x10 8-bit Pixel Art Medal Icon with V-ribbon, metallic rim, and center star emblem.
+ */
+@Composable
+fun PixelMedalIcon(
+    tier: PixelMedalTier,
+    isUnlocked: Boolean = tier != PixelMedalTier.NONE,
+    modifier: Modifier = Modifier.size(34.dp),
+    description: String = tier.titlePt
+) {
+    val palette = LocalPixelPalette.current
+    val effectiveTier = if (isUnlocked) tier else PixelMedalTier.NONE
+
+    // 10x10 grid:
+    // 'R' = Ribbon, 'B' = Dark Pixel Outline, 'M' = Medal Main, 'H' = Highlight/Star, 'S' = Shadow
+    val medalGrid = listOf(
+        ".RR....RR.",
+        ".RRR..RRR.",
+        "..RRRRRR..",
+        "...BBBB...",
+        "..BHHMMB..",
+        ".BHMHHMMB.",
+        ".BMHHHHMB.",
+        ".BMMHHSSB.",
+        "..BMSSSB..",
+        "...BBBB..."
+    )
+
+    val ribbon = if (isUnlocked) effectiveTier.ribbonColor else palette.textSecondary.copy(alpha = 0.25f)
+    val main = if (isUnlocked) effectiveTier.discMainColor else palette.textSecondary.copy(alpha = 0.22f)
+    val highlight = if (isUnlocked) effectiveTier.discHighlightColor else palette.textSecondary.copy(alpha = 0.35f)
+    val shadow = if (isUnlocked) effectiveTier.discShadowColor else palette.textSecondary.copy(alpha = 0.16f)
+    val outline = if (isUnlocked) palette.pixelBorder else palette.pixelBorder.copy(alpha = 0.35f)
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 10f
+        val cellH = size.height / 10f
+
+        medalGrid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    'R' -> ribbon
+                    'B' -> outline
+                    'M' -> main
+                    'H' -> highlight
+                    'S' -> shadow
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+
+        // Extra 8-bit corner sparkles when Gold (100%) is unlocked
+        if (isUnlocked && tier == PixelMedalTier.GOLD) {
+            drawRect(
+                color = effectiveTier.discHighlightColor,
+                topLeft = Offset(0f, 4f * cellH),
+                size = Size(cellW, cellH)
+            )
+            drawRect(
+                color = effectiveTier.discHighlightColor,
+                topLeft = Offset(9f * cellW, 3f * cellH),
+                size = Size(cellW, cellH)
+            )
+        }
+    }
+}
+
+/**
+ * 8x8 Pixel Art Streak Flame Icon for consecutive consistency streaks.
+ */
+@Composable
+fun PixelStreakFlameIcon(
+    isActive: Boolean,
+    modifier: Modifier = Modifier.size(26.dp),
+    description: String = "Sequência de consistência"
+) {
+    val palette = LocalPixelPalette.current
+    val flameGrid = listOf(
+        "....1...",
+        "...111..",
+        "..11211.",
+        ".112221.",
+        "11223211",
+        "11233311",
+        ".113311.",
+        "..1111.."
+    )
+
+    val outerColor = if (isActive) Color(0xFFF97316) else palette.textSecondary.copy(alpha = 0.32f)
+    val midColor = if (isActive) Color(0xFFFACC15) else palette.textSecondary.copy(alpha = 0.22f)
+    val coreColor = if (isActive) Color(0xFFFEF08A) else palette.textSecondary.copy(alpha = 0.45f)
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 8f
+        val cellH = size.height / 8f
+        flameGrid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    '1' -> outerColor
+                    '2' -> midColor
+                    '3' -> coreColor
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+    }
+}
+

@@ -103,6 +103,9 @@ class FullScreenAlarmActivity : ComponentActivity() {
         val routineId = intent?.getLongExtra(AlarmScheduler.EXTRA_ROUTINE_ID, 1L) ?: 1L
         val title = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE) ?: "Hora da sua Rotina!"
         val description = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_DESC) ?: ""
+        val iconName = intent?.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_ICON) ?: ""
+        val activitySprite = PixelSpriteType.entries.firstOrNull { it.name == iconName }
+            ?: PixelSpriteType.ALARM_BELL
 
         setContent {
             val prefsRepo = remember { UserPreferencesRepository(applicationContext) }
@@ -112,6 +115,7 @@ class FullScreenAlarmActivity : ComponentActivity() {
                 FullScreenAlarmContent(
                     title = title,
                     description = description,
+                    activitySprite = activitySprite,
                     heroArtPreference = settings.heroArtPreference,
                     snoozeMinutes = settings.alarmSnoozeMinutes,
                     onDismissAndComplete = {
@@ -165,6 +169,7 @@ class FullScreenAlarmActivity : ComponentActivity() {
 private fun FullScreenAlarmContent(
     title: String,
     description: String,
+    activitySprite: PixelSpriteType,
     heroArtPreference: HeroArtPreference,
     snoozeMinutes: Int,
     onDismissAndComplete: () -> Unit,
@@ -308,7 +313,7 @@ private fun FullScreenAlarmContent(
                                 .padding(12.dp)
                         )
 
-                        // Top-right Pulsing Pixel Alarm Bell
+                        // Top-right Pulsing Activity Pixel Icon
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -320,7 +325,7 @@ private fun FullScreenAlarmContent(
                             contentAlignment = Alignment.Center
                         ) {
                             PixelSpriteIcon(
-                                spriteType = PixelSpriteType.ALARM_BELL,
+                                spriteType = activitySprite,
                                 modifier = Modifier.size(26.dp),
                                 tintOverride = palette.onPrimary,
                                 description = "Alarme tocando"

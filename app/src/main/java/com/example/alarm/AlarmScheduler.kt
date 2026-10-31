@@ -21,6 +21,7 @@ object AlarmScheduler {
     const val EXTRA_ROUTINE_ID = "extra_routine_id"
     const val EXTRA_ROUTINE_TITLE = "extra_routine_title"
     const val EXTRA_ROUTINE_DESC = "extra_routine_desc"
+    const val EXTRA_ROUTINE_ICON = "extra_routine_icon"
     const val EXTRA_ALERT_MODE = "extra_alert_mode"
     const val EXTRA_SNOOZE_MINUTES = "extra_snooze_minutes"
     const val EXTRA_IS_TEST = "extra_is_test"
@@ -165,6 +166,7 @@ object AlarmScheduler {
                     putExtra(EXTRA_ROUTINE_ID, routine.id)
                     putExtra(EXTRA_ROUTINE_TITLE, routine.title)
                     putExtra(EXTRA_ROUTINE_DESC, routine.description)
+                    putExtra(EXTRA_ROUTINE_ICON, routine.sprite.name)
                 }
                 val showPendingIntent = PendingIntent.getActivity(
                     context,
@@ -227,6 +229,7 @@ object AlarmScheduler {
             putExtra(EXTRA_ROUTINE_ID, routine.id)
             putExtra(EXTRA_ROUTINE_TITLE, routine.title)
             putExtra(EXTRA_ROUTINE_DESC, routine.description)
+            putExtra(EXTRA_ROUTINE_ICON, routine.sprite.name)
             putExtra(EXTRA_ALERT_MODE, routine.alertModeName)
             putExtra(EXTRA_IS_TEST, true)
         }
@@ -239,6 +242,7 @@ object AlarmScheduler {
                     putExtra(EXTRA_ROUTINE_ID, routine.id)
                     putExtra(EXTRA_ROUTINE_TITLE, routine.title)
                     putExtra(EXTRA_ROUTINE_DESC, routine.description)
+                    putExtra(EXTRA_ROUTINE_ICON, routine.sprite.name)
                 }
                 context.startActivity(fullScreenIntent)
             } catch (_: Exception) {
@@ -252,6 +256,7 @@ object AlarmScheduler {
             putExtra(EXTRA_ROUTINE_ID, routine.id)
             putExtra(EXTRA_ROUTINE_TITLE, routine.title)
             putExtra(EXTRA_ROUTINE_DESC, routine.description)
+            putExtra(EXTRA_ROUTINE_ICON, routine.sprite.name)
             putExtra(EXTRA_ALERT_MODE, routine.alertModeName)
         }
         return PendingIntent.getBroadcast(

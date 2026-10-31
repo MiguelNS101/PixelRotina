@@ -35,8 +35,8 @@ enum class HeroArtPreference(
 ) {
     AUTO(
         id = "AUTO",
-        title = "🔄 Automático (Com Variações do Dia)",
-        subtitle = "Muda conforme o horário e alterna variações de cenário",
+        title = "🔄 Automático (11 Cenas Dinâmicas do Dia)",
+        subtitle = "Muda conforme o horário e alterna variações de cenário automaticamente",
         greeting = "SUA ROTINA DE HOJE",
         cardSubtitle = "No seu ritmo, com leveza e constância",
         drawableRes = null,
@@ -60,6 +60,15 @@ enum class HeroArtPreference(
         drawableRes = R.drawable.img_pixel_hero_rainy_morning,
         ambientEffect = AmbientSceneEffect.RAIN_DROPS
     ),
+    MORNING_SUNRISE(
+        id = "MORNING_SUNRISE",
+        title = "🍵 Nascer do Sol & Matcha na Varanda",
+        subtitle = "Varanda serena ao amanhecer com vista para as colinas e chá quente",
+        greeting = "BOM DIA • AMANHECER SERENO",
+        cardSubtitle = "Respire o ar da manhã e planeje seu dia sem pressa",
+        drawableRes = R.drawable.img_pixel_hero_sunrise_matcha,
+        ambientEffect = AmbientSceneEffect.SUN_MOTES
+    ),
     AFTERNOON(
         id = "AFTERNOON",
         title = "🌤️ Tarde Lo-Fi (Chá & Gatinho)",
@@ -78,6 +87,15 @@ enum class HeroArtPreference(
         drawableRes = R.drawable.img_pixel_hero_garden_afternoon,
         ambientEffect = AmbientSceneEffect.SUN_MOTES
     ),
+    AFTERNOON_LIBRARY(
+        id = "AFTERNOON_LIBRARY",
+        title = "📚 Recanto de Estudos & Café Gelado",
+        subtitle = "Cantinho iluminado de leitura e foco à tarde com plantas e livros",
+        greeting = "BOA TARDE • FOCO TRANQUILO",
+        cardSubtitle = "Um passo de cada vez, com pausas para descansar a vista",
+        drawableRes = R.drawable.img_pixel_hero_afternoon_library,
+        ambientEffect = AmbientSceneEffect.SUN_MOTES
+    ),
     EVENING(
         id = "EVENING",
         title = "🌇 Pôr do Sol & Crepúsculo",
@@ -85,6 +103,15 @@ enum class HeroArtPreference(
         greeting = "FIM DE TARDE • SUA ROTINA DE HOJE",
         cardSubtitle = "Desacelere aos poucos e cuide de você",
         drawableRes = R.drawable.img_pixel_hero_evening,
+        ambientEffect = AmbientSceneEffect.TWINKLING_STARS
+    ),
+    EVENING_ROOFTOP(
+        id = "EVENING_ROOFTOP",
+        title = "🌆 Terraço Lo-Fi ao Entardecer",
+        subtitle = "Jardim no terraço com luzinhas quentes, chá de ervas e céu crepuscular",
+        greeting = "FIM DE TARDE • PAZ & TRANSIÇÃO",
+        cardSubtitle = "Momento de relaxar a mente e celebrar o que você fez hoje",
+        drawableRes = R.drawable.img_pixel_hero_evening_rooftop,
         ambientEffect = AmbientSceneEffect.TWINKLING_STARS
     ),
     NIGHT(
@@ -104,19 +131,41 @@ enum class HeroArtPreference(
         cardSubtitle = "Prepare-se para uma noite tranquila e revigorante",
         drawableRes = R.drawable.img_pixel_hero_cozy_cat_night,
         ambientEffect = AmbientSceneEffect.TWINKLING_STARS
+    ),
+    NIGHT_CAMPFIRE(
+        id = "NIGHT_CAMPFIRE",
+        title = "🔥 Píer do Lago & Noite Estrelada",
+        subtitle = "Deck tranquilo à beira do lago com lanterna quente, lua e vaga-lumes",
+        greeting = "BOA NOITE • SILÊNCIO & ESTRELAS",
+        cardSubtitle = "Desconecte das telas e aproveite a serenidade da noite",
+        drawableRes = R.drawable.img_pixel_hero_night_campfire,
+        ambientEffect = AmbientSceneEffect.TWINKLING_STARS
     );
 
     fun resolveForHour(
         hourOfDay: Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
-        variationIndex: Int = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        variationIndex: Int = Calendar.getInstance().get(Calendar.DAY_OF_YEAR) + (hourOfDay % 3)
     ): HeroArtPreference {
         if (this != AUTO) return this
-        val isAltVariant = variationIndex % 2 == 1
+        val v3 = ((variationIndex % 3) + 3) % 3
+        val v2 = ((variationIndex % 2) + 2) % 2
         return when (hourOfDay) {
-            in 5..11 -> if (isAltVariant) MORNING_RAIN else MORNING
-            in 12..16 -> if (isAltVariant) AFTERNOON_GARDEN else AFTERNOON
-            in 17..19 -> EVENING
-            else -> if (isAltVariant) NIGHT_CATPPUCCIN else NIGHT
+            in 5..11 -> when (v3) {
+                0 -> MORNING
+                1 -> MORNING_RAIN
+                else -> MORNING_SUNRISE
+            }
+            in 12..16 -> when (v3) {
+                0 -> AFTERNOON
+                1 -> AFTERNOON_GARDEN
+                else -> AFTERNOON_LIBRARY
+            }
+            in 17..19 -> if (v2 == 0) EVENING else EVENING_ROOFTOP
+            else -> when (v3) {
+                0 -> NIGHT
+                1 -> NIGHT_CATPPUCCIN
+                else -> NIGHT_CAMPFIRE
+            }
         }
     }
 

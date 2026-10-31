@@ -29,6 +29,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                 val routineId = intent.getLongExtra(AlarmScheduler.EXTRA_ROUTINE_ID, -1L)
                 val fallbackTitle = intent.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE) ?: "Rotina"
                 val fallbackDesc = intent.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_DESC) ?: ""
+                val fallbackIcon = intent.getStringExtra(AlarmScheduler.EXTRA_ROUTINE_ICON) ?: ""
                 val fallbackMode = intent.getStringExtra(AlarmScheduler.EXTRA_ALERT_MODE)
                     ?: AlertMode.QUICK_OK_NOTIFICATION.name
                 val isTest = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_TEST, false)
@@ -45,6 +46,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             id = if (routineId > 0L) routineId else 999L,
                             title = fallbackTitle,
                             description = fallbackDesc,
+                            spriteName = fallbackIcon,
                             alertModeName = fallbackMode
                         )
 
@@ -53,7 +55,8 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                                 context = appContext,
                                 routineId = targetRoutine.id,
                                 title = targetRoutine.title,
-                                description = targetRoutine.description
+                                description = targetRoutine.description,
+                                iconName = targetRoutine.sprite.name
                             )
                         } else {
                             NotificationHelper.showRoutineNotification(

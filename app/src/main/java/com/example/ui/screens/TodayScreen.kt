@@ -59,12 +59,16 @@ import com.example.data.FrequencyType
 import com.example.data.HeroArtPreference
 import com.example.data.RoutineEntity
 import com.example.ui.RoutineUiState
+import com.example.ui.StreakMedalSummary
 import com.example.ui.components.PixelBadge
 import com.example.ui.components.PixelBlockProgressBar
 import com.example.ui.components.PixelButton
 import com.example.ui.components.PixelCard
+import com.example.ui.components.PixelMedalIcon
+import com.example.ui.components.PixelMedalTier
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
+import com.example.ui.components.PixelStreakFlameIcon
 import com.example.ui.components.PomodoroEmbeddedCard
 import com.example.ui.components.PomodoroPhase
 import com.example.ui.theme.LocalPixelPalette
@@ -101,8 +105,8 @@ fun TodayScreen(
     val dailyProgress = (totalDailyDone.toFloat() / totalDailyTarget.toFloat()).coerceIn(0f, 1f)
 
     val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    var variationOffset by remember {
-        mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_YEAR))
+    val variationOffset = remember {
+        Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
     }
     val activeArt = remember(uiState.settings.heroArtPreference, currentHour, variationOffset) {
         uiState.settings.heroArtPreference.resolveForHour(currentHour, variationOffset)
@@ -123,7 +127,7 @@ fun TodayScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(166.dp)
+                            .height(228.dp)
                     ) {
                         Crossfade(
                             targetState = drawableRes,
@@ -147,25 +151,17 @@ fun TodayScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.34f))
+                                .background(Color.Black.copy(alpha = 0.28f))
                         )
 
                         PixelBadge(
-                            text = if (uiState.settings.heroArtPreference == HeroArtPreference.AUTO) {
-                                "${activeArt.title} • 🎲 Variar"
-                            } else {
-                                activeArt.title
-                            },
+                            text = activeArt.title,
                             containerColor = Color.Black.copy(alpha = 0.62f),
                             contentColor = Color.White,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(12.dp)
-                                .clickable {
-                                    // Allows cycling through the current time-of-day's variations in Auto mode
-                                    variationOffset++
-                                }
-                                .testTag("hero_variation_badge")
+                                .testTag("hero_scene_badge")
                         )
 
                         Column(
@@ -214,30 +210,10 @@ fun TodayScreen(
                             progress = dailyProgress,
                             activeColor = palette.wellnessGreen
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            PixelButton(
-                                text = "+ INTERVALO",
-                                onClick = { onCreateNewRoutine(FrequencyType.INTERVAL) },
-                                containerColor = palette.secondary,
-                                contentColor = palette.onSecondary,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("new_interval_routine_button")
-                            )
-                            PixelButton(
-                                text = "+ HORÁRIO / ALARME",
-                                onClick = { onCreateNewRoutine(FrequencyType.SPECIFIC_TIME) },
-                                containerColor = palette.primary,
-                                contentColor = palette.onPrimary,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("new_scheduled_routine_button")
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DailyStreakMedalSection(
+                            streakSummary = uiState.streakMedalSummary
+                        )
                     }
                 }
             }
@@ -722,6 +698,18 @@ private fun ScheduledRoutineCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .background(palette.surface, RoundedCornerShape(4.dp))
+                                .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(4.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PixelSpriteIcon(
+                                spriteType = routine.sprite,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                         PixelBadge(
                             text = if (isAlarm) "🔔 ALARME VIBRA & TOCA" else "📩 NOTIFICAÇÃO",
                             containerColor = if (isAlarm) palette.alarmCoral.copy(alpha = 0.2f) else palette.secondary.copy(alpha = 0.25f),
@@ -818,3 +806,195 @@ private fun ScheduledRoutineCard(
         }
     }
 }
+
+@Composable
+private fun DailyStreakMedalSection(
+    streakSummary: StreakMedalSummary,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalPixelPalette.current
+    val currentMedal = streakSummary.todayMedal
+    val percent = streakSummary.todayCompletionPercent
+    val hasActiveRoutines = streakSummary.hasActiveRoutinesToday
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.surface)
+            .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(6.dp))
+            .padding(12.dp)
+            .testTag("daily_streak_medal_section")
+    ) {
+        // Top Row: Streak Flame + Streak Counter + Current Earned Medal Badge
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(
+                            if (streakSummary.currentStreakDays > 0) {
+                                Color(0xFFF97316).copy(alpha = 0.18f)
+                            } else {
+                                palette.surfaceElevated
+                            },
+                            RoundedCornerShape(6.dp)
+                        )
+                        .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(6.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PixelStreakFlameIcon(
+                        isActive = streakSummary.currentStreakDays > 0,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column {
+                    val streakLabel = if (streakSummary.currentStreakDays == 1) {
+                        "SEQUÊNCIA: 1 DIA"
+                    } else {
+                        "SEQUÊNCIA: ${streakSummary.currentStreakDays} DIAS"
+                    }
+                    Text(
+                        text = streakLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = palette.textPrimary,
+                        modifier = Modifier.testTag("streak_counter_label")
+                    )
+                    Text(
+                        text = if (streakSummary.goldStreakDays > 0) {
+                            "Ouro 100%: ${streakSummary.goldStreakDays}d • Recorde: ${streakSummary.bestStreakDays}d"
+                        } else {
+                            "Recorde de consistência: ${streakSummary.bestStreakDays} dias"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.textSecondary
+                    )
+                }
+            }
+
+            PixelBadge(
+                text = currentMedal.shortLabelPt,
+                containerColor = if (currentMedal != PixelMedalTier.NONE) {
+                    currentMedal.discMainColor
+                } else {
+                    palette.surfaceElevated
+                },
+                contentColor = if (currentMedal != PixelMedalTier.NONE) {
+                    Color(0xFF1A1B26)
+                } else {
+                    palette.textSecondary
+                },
+                modifier = Modifier.testTag("today_current_medal_badge")
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 3 Pixel Art Medal Slots: Bronze (50%), Prata (75%), Ouro (100%)
+        val medalTiers = listOf(
+            PixelMedalTier.BRONZE,
+            PixelMedalTier.SILVER,
+            PixelMedalTier.GOLD
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            medalTiers.forEach { tier ->
+                val isUnlocked = hasActiveRoutines && percent >= tier.thresholdPercent
+                val isCurrentTopTier = currentMedal == tier
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (isUnlocked) {
+                                tier.discMainColor.copy(alpha = 0.16f)
+                            } else {
+                                palette.surfaceElevated.copy(alpha = 0.65f)
+                            }
+                        )
+                        .border(
+                            width = if (isCurrentTopTier) 2.5.dp else 1.5.dp,
+                            color = if (isUnlocked) tier.discMainColor else palette.pixelBorder.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(vertical = 8.dp, horizontal = 6.dp)
+                        .testTag("medal_slot_${tier.name.lowercase()}"),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    PixelMedalIcon(
+                        tier = tier,
+                        isUnlocked = isUnlocked,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = when (tier) {
+                            PixelMedalTier.BRONZE -> "BRONZE"
+                            PixelMedalTier.SILVER -> "PRATA"
+                            PixelMedalTier.GOLD -> "OURO"
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isUnlocked) palette.textPrimary else palette.textSecondary
+                    )
+                    Text(
+                        text = if (isUnlocked) "✓ ${tier.thresholdPercent}%" else "${tier.thresholdPercent}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isUnlocked) palette.wellnessGreen else palette.textSecondary
+                    )
+                }
+            }
+        }
+
+        // Celebratory banner when a medal is earned today (especially Gold 100% when all tasks are completed!)
+        if (currentMedal != PixelMedalTier.NONE) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(currentMedal.discMainColor.copy(alpha = 0.2f))
+                    .border(2.dp, currentMedal.discMainColor, RoundedCornerShape(6.dp))
+                    .padding(10.dp)
+                    .testTag("earned_medal_celebration_banner"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                PixelMedalIcon(
+                    tier = currentMedal,
+                    isUnlocked = true,
+                    modifier = Modifier.size(38.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${currentMedal.titlePt.uppercase()} CONQUISTADA!",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = palette.textPrimary
+                    )
+                    Text(
+                        text = currentMedal.encouragementPt,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.textSecondary
+                    )
+                }
+            }
+        } else if (hasActiveRoutines) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = PixelMedalTier.NONE.encouragementPt,
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.textSecondary
+            )
+        }
+    }
+}
+

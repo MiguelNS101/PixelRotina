@@ -14,10 +14,15 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.AlertMode
 import com.example.data.RoutineEntity
+import com.example.ui.components.PixelSpriteType
+import com.example.ui.components.createNotificationLargeBitmap
+import com.example.ui.components.createNotificationSmallBitmap
+import com.example.ui.components.defaultMainColorArgb
 
 object NotificationHelper {
 
@@ -138,9 +143,15 @@ object NotificationHelper {
             "Momento da sua rotina de ${routine.category.label.lowercase()}."
         }
 
+        val activitySprite = routine.sprite
+        val smallIconCompat = IconCompat.createWithBitmap(activitySprite.createNotificationSmallBitmap(64))
+        val largeBitmap = activitySprite.createNotificationLargeBitmap(128)
+
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("✨ ${routine.title}")
+            .setSmallIcon(smallIconCompat)
+            .setLargeIcon(largeBitmap)
+            .setColor(activitySprite.defaultMainColorArgb())
+            .setContentTitle("${routine.title} • ${routine.category.label}")
             .setContentText(subtitle)
             .setStyle(NotificationCompat.BigTextStyle().bigText(subtitle))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -170,6 +181,7 @@ object NotificationHelper {
         routineId: Long,
         title: String,
         description: String,
+        iconName: String = "",
         snoozeMinutes: Int = 10
     ): Notification {
         ensureChannelsCreated(context)
@@ -180,6 +192,7 @@ object NotificationHelper {
             putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
             putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
             putExtra(AlarmScheduler.EXTRA_ROUTINE_DESC, description)
+            putExtra(AlarmScheduler.EXTRA_ROUTINE_ICON, iconName)
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
             context,
@@ -217,8 +230,15 @@ object NotificationHelper {
             "Alarme de rotina ativo! Toque para desligar e concluir."
         }
 
+        val activitySprite = PixelSpriteType.entries.firstOrNull { it.name == iconName }
+            ?: PixelSpriteType.ALARM_BELL
+        val smallIconCompat = IconCompat.createWithBitmap(activitySprite.createNotificationSmallBitmap(64))
+        val largeBitmap = activitySprite.createNotificationLargeBitmap(128)
+
         return NotificationCompat.Builder(context, CHANNEL_PERSISTENT_ALARM)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(smallIconCompat)
+            .setLargeIcon(largeBitmap)
+            .setColor(activitySprite.defaultMainColorArgb())
             .setContentTitle("🔔 ALARME: $title")
             .setContentText(bodyText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
@@ -245,7 +265,8 @@ object NotificationHelper {
     fun showPomodoroIntervalFinishedNotification(
         context: Context,
         title: String,
-        message: String
+        message: String,
+        spriteType: PixelSpriteType = PixelSpriteType.BOOK_FOCUS
     ) {
         ensureChannelsCreated(context)
         if (!hasNotificationPermission(context)) return
@@ -260,8 +281,13 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val smallIconCompat = IconCompat.createWithBitmap(spriteType.createNotificationSmallBitmap(64))
+        val largeBitmap = spriteType.createNotificationLargeBitmap(128)
+
         val builder = NotificationCompat.Builder(context, CHANNEL_SCHEDULED)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(smallIconCompat)
+            .setLargeIcon(largeBitmap)
+            .setColor(spriteType.defaultMainColorArgb())
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
