@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="208dp"
+    android:background="#FF11111B">
+
+    <!-- Full-bleed edge-to-edge pixel art hero card -->
+    <ImageView
+        android:id="@+id/notif_bg_art"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/img_pixel_hero_night" />
+
+    <!-- Atmospheric scrim keeping upper pixel art visible and lower buttons ultra-readable -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_notif_scrim_fullart"
+        android:contentDescription="@null" />
+
+    <!-- Dynamic theme pixel accent strip -->
+    <ImageView
+        android:id="@+id/notif_accent_bar"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="top"
+        android:background="#FFCBA6F7"
+        android:contentDescription="@null" />
+
+    <!-- Outer 8-bit pixel frame -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_notif_pixel_frame"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="10dp"
+        android:paddingTop="9dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="9dp">
+
+        <!-- Header strip over full-art sky -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/notif_sprite_icon"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:contentDescription="@string/notif_cd_activity_sprite"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/notif_step_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_notif_pixel_badge"
+                android:paddingStart="7dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="7dp"
+                android:paddingBottom="3dp"
+                android:textColor="#FFCBA6F7"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:typeface="monospace" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/notif_scene_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_notif_pixel_badge"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="3dp"
+                android:textColor="#FFF9E2AF"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:typeface="monospace" />
+        </LinearLayout>
+
+        <!-- Breathing room so the pixel art hero scene shines clearly -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Title & Prompt -->
+        <TextView
+            android:id="@+id/notif_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:shadowColor="#FF000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/notif_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:shadowColor="#FF000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="1"
+            android:textColor="#FFE2E8F8"
+            android:textSize="10sp"
+            android:typeface="monospace" />
+
+        <!-- 5 Pixel Art Rating Tiles (Levels 1 to 5) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="68dp"
+            android:layout_marginTop="8dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <!-- Level 1 -->
+            <LinearLayout
+                android:id="@+id/notif_btn_level_1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_notif_pixel_tile"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <ImageView
+                    android:id="@+id/notif_icon_level_1"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/notif_cd_level_1"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/notif_num_level_1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="1"
+                    android:textColor="#FFF38BA8"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:id="@+id/notif_label_level_1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#FFD8DEE9"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+            </LinearLayout>
+
+            <!-- Level 2 -->
+            <LinearLayout
+                android:id="@+id/notif_btn_level_2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_notif_pixel_tile"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <ImageView
+                    android:id="@+id/notif_icon_level_2"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/notif_cd_level_2"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/notif_num_level_2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="2"
+                    android:textColor="#FFFAB387"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:id="@+id/notif_label_level_2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#FFD8DEE9"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+            </LinearLayout>
+
+            <!-- Level 3 -->
+            <LinearLayout
+                android:id="@+id/notif_btn_level_3"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_notif_pixel_tile"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <ImageView
+                    android:id="@+id/notif_icon_level_3"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/notif_cd_level_3"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/notif_num_level_3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="3"
+                    android:textColor="#FF74C7EC"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:id="@+id/notif_label_level_3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#FFD8DEE9"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+            </LinearLayout>
+
+            <!-- Level 4 -->
+            <LinearLayout
+                android:id="@+id/notif_btn_level_4"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_notif_pixel_tile"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <ImageView
+                    android:id="@+id/notif_icon_level_4"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/notif_cd_level_4"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/notif_num_level_4"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="4"
+                    android:textColor="#FFCBA6F7"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:id="@+id/notif_label_level_4"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#FFD8DEE9"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+            </LinearLayout>
+
+            <!-- Level 5 -->
+            <LinearLayout
+                android:id="@+id/notif_btn_level_5"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_notif_pixel_tile"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <ImageView
+                    android:id="@+id/notif_icon_level_5"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/notif_cd_level_5"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/notif_num_level_5"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="5"
+                    android:textColor="#FFA6E3A1"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:id="@+id/notif_label_level_5"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#FFD8DEE9"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

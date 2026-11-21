@@ -7,8 +7,10 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -18,10 +20,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -39,15 +45,17 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,17 +85,31 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.AmbientSceneEffect
+import com.example.data.AppDatabase
 import com.example.data.DateUtils
 import com.example.data.HeroArtPreference
+import com.example.data.JournalEntryEntity
+import com.example.data.JournalEntryType
 import com.example.data.UserPreferencesRepository
 import com.example.data.UserSettings
+import com.example.ui.RoutineViewModel
 import com.example.ui.components.PixelBadge
 import com.example.ui.components.PixelButton
 import com.example.ui.components.PixelCard
+import com.example.ui.components.PixelEnergyIcon
+import com.example.ui.components.PixelMoodIcon
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
+import com.example.ui.components.energyLabelPt
+import com.example.ui.components.moodLabelPt
 import com.example.ui.theme.LocalPixelPalette
 import com.example.ui.theme.PixelRotinaTheme
+import com.example.widget.PixelWidgetUpdater
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -110,6 +132,11 @@ class FullScreenAlarmActivity : ComponentActivity() {
         setContent {
             val prefsRepo = remember { UserPreferencesRepository(applicationContext) }
             val settings by prefsRepo.settingsFlow.collectAsState(initial = UserSettings())
+            var hasDismissedAlarm by remember { mutableStateOf(false) }
+
+            BackHandler(enabled = hasDismissedAlarm) {
+                finish()
+            }
 
             PixelRotinaTheme(themeType = settings.themeType) {
                 FullScreenAlarmContent(
@@ -118,13 +145,52 @@ class FullScreenAlarmActivity : ComponentActivity() {
                     activitySprite = activitySprite,
                     heroArtPreference = settings.heroArtPreference,
                     snoozeMinutes = settings.alarmSnoozeMinutes,
-                    onDismissAndComplete = {
+                    hasDismissedAlarm = hasDismissedAlarm,
+                    onSlideDismissAndComplete = {
+                        // Immediately stop alarm sound/vibration and record completion
                         val broadcast = Intent(this, ReminderBroadcastReceiver::class.java).apply {
                             action = AlarmScheduler.ACTION_DISMISS_ALARM
                             putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
                             putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
                         }
                         sendBroadcast(broadcast)
+                        hasDismissedAlarm = true
+                    },
+                    onSaveMoodAndEnergy = { moodScore, energyScore ->
+                        val appCtx = applicationContext
+                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                            try {
+                                val dao = AppDatabase.getInstance(appCtx).routineDao()
+                                val now = System.currentTimeMillis()
+                                val todayKey = DateUtils.todayDateKey(now)
+                                val streakSummary = RoutineViewModel.computeStreakMedalSummary(
+                                    routines = dao.getAllRoutinesOnce(),
+                                    logs = dao.getAllCheckInsOnce(),
+                                    todayKey = todayKey
+                                )
+                                dao.insertJournalEntry(
+                                    JournalEntryEntity(
+                                        dateKey = todayKey,
+                                        timestamp = now,
+                                        entryTypeName = JournalEntryType.MOOD_CHECKIN.name,
+                                        moodScore = moodScore.coerceIn(1, 5),
+                                        energyScore = energyScore.coerceIn(1, 5),
+                                        contextTagsCsv = "",
+                                        content = "Check-in pós-alarme: $title",
+                                        routineCompletionPercentSnapshot = streakSummary.todayCompletionPercent,
+                                        medalSnapshotName = streakSummary.todayMedal.name,
+                                        pomodoroCyclesSnapshot = 0
+                                    )
+                                )
+                                PixelWidgetUpdater.refreshAllSuspending(appCtx)
+                            } finally {
+                                withContext(Dispatchers.Main) {
+                                    finish()
+                                }
+                            }
+                        }
+                    },
+                    onSkipMoodAndClose = {
                         finish()
                     },
                     onSnooze = {
@@ -166,13 +232,16 @@ class FullScreenAlarmActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FullScreenAlarmContent(
+internal fun FullScreenAlarmContent(
     title: String,
     description: String,
     activitySprite: PixelSpriteType,
     heroArtPreference: HeroArtPreference,
     snoozeMinutes: Int,
-    onDismissAndComplete: () -> Unit,
+    hasDismissedAlarm: Boolean,
+    onSlideDismissAndComplete: () -> Unit,
+    onSaveMoodAndEnergy: (moodScore: Int, energyScore: Int) -> Unit,
+    onSkipMoodAndClose: () -> Unit,
     onSnooze: () -> Unit
 ) {
     val palette = LocalPixelPalette.current
@@ -216,7 +285,6 @@ private fun FullScreenAlarmContent(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Subtle atmospheric gradient overlay so the foreground card and photo stand out clearly
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -239,15 +307,15 @@ private fun FullScreenAlarmContent(
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Header Badge: Ringing Alarm Indicator
+            // Top Header Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PixelBadge(
-                    text = "🔔 ALARME DE ROTINA",
-                    containerColor = palette.alarmCoral,
+                    text = if (hasDismissedAlarm) "✓ ROTINA CONCLUÍDA" else "🔔 ALARME DE ROTINA",
+                    containerColor = if (hasDismissedAlarm) palette.wellnessGreen else palette.alarmCoral,
                     contentColor = palette.onPrimary
                 )
                 PixelBadge(
@@ -257,150 +325,426 @@ private fun FullScreenAlarmContent(
                 )
             }
 
-            // Center Card: Framed Photo of the Moment + Digital Clock + Task Details
-            PixelCard(
-                containerColor = palette.surfaceElevated,
-                borderColor = palette.alarmCoral,
-                shadowOffset = 6.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            AnimatedContent(
+                targetState = hasDismissedAlarm,
+                transitionSpec = {
+                    fadeIn(tween(260)) togetherWith fadeOut(tween(180))
+                },
+                label = "alarm_phase_transition",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) { dismissed ->
+                if (!dismissed) {
+                    // PHASE 1: Ringing Alarm + Moment Photo + Slide to Complete
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        PixelCard(
+                            containerColor = palette.surfaceElevated,
+                            borderColor = palette.alarmCoral,
+                            shadowOffset = 6.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(190.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = drawableRes),
+                                        contentDescription = activeArt.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .testTag("alarm_moment_photo")
+                                    )
+
+                                    AlarmMomentParticles(
+                                        effect = activeArt.ambientEffect,
+                                        phase = ambientPhase,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.Black.copy(alpha = 0.15f),
+                                                        Color.Black.copy(alpha = 0.62f)
+                                                    )
+                                                )
+                                            )
+                                    )
+
+                                    PixelBadge(
+                                        text = activeArt.title,
+                                        containerColor = Color.Black.copy(alpha = 0.68f),
+                                        contentColor = Color.White,
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(12.dp)
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(12.dp)
+                                            .size(44.dp)
+                                            .scale(pulseScale)
+                                            .background(palette.alarmCoral, RoundedCornerShape(6.dp))
+                                            .border(2.dp, palette.pixelBorder, RoundedCornerShape(6.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        PixelSpriteIcon(
+                                            spriteType = activitySprite,
+                                            modifier = Modifier.size(26.dp),
+                                            tintOverride = palette.onPrimary,
+                                            description = "Alarme tocando"
+                                        )
+                                    }
+
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = DateUtils.formatTime(System.currentTimeMillis()),
+                                            style = MaterialTheme.typography.displayLarge,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = activeArt.greeting,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        color = palette.primary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = description.ifBlank { activeArt.cardSubtitle },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = palette.textSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            PixelSlideToComplete(
+                                onSlideCompleted = onSlideDismissAndComplete,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("alarm_slide_to_complete")
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            PixelButton(
+                                text = "⏰ ADIAR SONECA (+${snoozeMinutes} MIN)",
+                                onClick = onSnooze,
+                                containerColor = palette.snoozeAmber,
+                                contentColor = palette.textPrimary,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("alarm_snooze_button")
+                            )
+                        }
+                    }
+                } else {
+                    // PHASE 2: Post-Slide Mood (1..5) & Energy/Focus (1..5) Quick Check-in
+                    PostSlideAlarmMoodEnergyStep(
+                        routineTitle = title,
+                        activitySprite = activitySprite,
+                        drawableRes = drawableRes,
+                        sceneTitle = activeArt.title,
+                        onSave = onSaveMoodAndEnergy,
+                        onSkip = onSkipMoodAndClose
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostSlideAlarmMoodEnergyStep(
+    routineTitle: String,
+    activitySprite: PixelSpriteType,
+    drawableRes: Int,
+    sceneTitle: String,
+    onSave: (moodScore: Int, energyScore: Int) -> Unit,
+    onSkip: () -> Unit
+) {
+    val palette = LocalPixelPalette.current
+    val haptic = LocalHapticFeedback.current
+    var selectedMood by remember { mutableIntStateOf(4) }
+    var selectedEnergy by remember { mutableIntStateOf(4) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 12.dp)
+            .testTag("alarm_post_slide_mood_panel"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        PixelCard(
+            containerColor = palette.surfaceElevated,
+            borderColor = palette.wellnessGreen,
+            shadowOffset = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Compact Moment Art Header Strip
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(104.dp)
                 ) {
-                    // Photo of the Moment Banner inside the Alarm Card
+                    Image(
+                        painter = painterResource(id = drawableRes),
+                        contentDescription = sceneTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(190.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = drawableRes),
-                            contentDescription = activeArt.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("alarm_moment_photo")
-                        )
-
-                        // Animated 8-bit ambient particles on the moment photo
-                        AlarmMomentParticles(
-                            effect = activeArt.ambientEffect,
-                            phase = ambientPhase,
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.15f),
-                                            Color.Black.copy(alpha = 0.62f)
-                                        )
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.22f),
+                                        Color.Black.copy(alpha = 0.78f)
                                     )
                                 )
-                        )
-
-                        // Top-left Moment of the Day Badge
-                        PixelBadge(
-                            text = activeArt.title,
-                            containerColor = Color.Black.copy(alpha = 0.68f),
-                            contentColor = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(12.dp)
-                        )
-
-                        // Top-right Pulsing Activity Pixel Icon
+                            )
+                    )
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .size(44.dp)
-                                .scale(pulseScale)
-                                .background(palette.alarmCoral, RoundedCornerShape(6.dp))
+                                .size(40.dp)
+                                .background(palette.wellnessGreen, RoundedCornerShape(6.dp))
                                 .border(2.dp, palette.pixelBorder, RoundedCornerShape(6.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             PixelSpriteIcon(
                                 spriteType = activitySprite,
-                                modifier = Modifier.size(26.dp),
+                                modifier = Modifier.size(24.dp),
                                 tintOverride = palette.onPrimary,
-                                description = "Alarme tocando"
+                                description = routineTitle
                             )
                         }
-
-                        // Large Digital Time overlaid at bottom of the Moment Photo
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = DateUtils.formatTime(System.currentTimeMillis()),
-                                style = MaterialTheme.typography.displayLarge,
-                                color = Color.White
-                            )
-                            Text(
-                                text = activeArt.greeting,
+                                text = "ALARME DESLIGADO!",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.9f)
+                                color = palette.wellnessGreen
+                            )
+                            Text(
+                                text = routineTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-
-                    // Routine Title & Description
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = palette.primary,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = description.ifBlank {
-                                activeArt.cardSubtitle
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = palette.textSecondary,
-                            textAlign = TextAlign.Center
-                        )
                     }
                 }
-            }
 
-            // Bottom Action Area: Pixel Art Slide to Complete + Snooze Button
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                PixelSlideToComplete(
-                    onSlideCompleted = onDismissAndComplete,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("alarm_slide_to_complete")
-                )
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Como estão seu humor e energia agora? Isso alimenta sua média diária e o Diário.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.textSecondary
+                    )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                    // 5-Level Mood Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "HUMOR AGORA",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = palette.primary
+                            )
+                            PixelBadge(
+                                text = "$selectedMood/5 • ${moodLabelPt(selectedMood).uppercase()}",
+                                containerColor = palette.primary.copy(alpha = 0.18f),
+                                contentColor = palette.primary
+                            )
+                        }
 
-                PixelButton(
-                    text = "⏰ ADIAR SONECA (+${snoozeMinutes} MIN)",
-                    onClick = onSnooze,
-                    containerColor = palette.snoozeAmber,
-                    contentColor = palette.textPrimary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("alarm_snooze_button")
-                )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            for (level in 1..5) {
+                                val isSelected = selectedMood == level
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isSelected) palette.primary.copy(alpha = 0.22f)
+                                            else palette.surface
+                                        )
+                                        .border(
+                                            width = if (isSelected) 2.5.dp else 1.5.dp,
+                                            color = if (isSelected) palette.primary else palette.pixelBorder.copy(alpha = 0.55f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable {
+                                            selectedMood = level
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        .padding(vertical = 8.dp, horizontal = 2.dp)
+                                        .testTag("alarm_mood_option_$level"),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    PixelMoodIcon(
+                                        level = level,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Text(
+                                        text = "$level",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isSelected) palette.primary else palette.textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 5-Level Energy / Focus Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "ENERGIA / FOCO",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = palette.wellnessGreen
+                            )
+                            PixelBadge(
+                                text = "$selectedEnergy/5 • ${energyLabelPt(selectedEnergy).uppercase()}",
+                                containerColor = palette.wellnessGreen.copy(alpha = 0.18f),
+                                contentColor = palette.wellnessGreen
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            for (level in 1..5) {
+                                val isSelected = selectedEnergy == level
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isSelected) palette.wellnessGreen.copy(alpha = 0.22f)
+                                            else palette.surface
+                                        )
+                                        .border(
+                                            width = if (isSelected) 2.5.dp else 1.5.dp,
+                                            color = if (isSelected) palette.wellnessGreen else palette.pixelBorder.copy(alpha = 0.55f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable {
+                                            selectedEnergy = level
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        .padding(vertical = 8.dp, horizontal = 2.dp)
+                                        .testTag("alarm_energy_option_$level"),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    PixelEnergyIcon(
+                                        level = level,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Text(
+                                        text = "$level",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isSelected) palette.wellnessGreen else palette.textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    PixelButton(
+                        text = "💾 SALVAR HUMOR & ENERGIA",
+                        onClick = { onSave(selectedMood, selectedEnergy) },
+                        containerColor = palette.wellnessGreen,
+                        contentColor = palette.onPrimary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("alarm_save_mood_energy_button")
+                    )
+
+                    PixelButton(
+                        text = "PULAR E FECHAR",
+                        onClick = onSkip,
+                        containerColor = palette.surface,
+                        contentColor = palette.textSecondary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("alarm_skip_mood_button")
+                    )
+                }
             }
         }
     }
@@ -478,7 +822,6 @@ fun PixelSlideToComplete(
                 }
             }
     ) {
-        // Progressive green fill following the dragged thumb
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -487,7 +830,6 @@ fun PixelSlideToComplete(
                 .background(palette.wellnessGreen.copy(alpha = 0.25f + progressFraction * 0.65f))
         )
 
-        // Center guide text
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -509,7 +851,6 @@ fun PixelSlideToComplete(
             )
         }
 
-        // Draggable 3D Pixel Art Handle
         Box(
             modifier = Modifier
                 .offset { IntOffset(animatedOffsetPx.roundToInt(), 0) }

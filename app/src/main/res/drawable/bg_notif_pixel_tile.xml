@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Hard 8-bit drop shadow -->
+    <item
+        android:left="2dp"
+        android:top="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FF090A10" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+    <!-- Tactile dark pixel button face -->
+    <item
+        android:bottom="2dp"
+        android:right="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#D91E2030" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#99CBA6F7" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+</layer-list>

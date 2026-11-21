@@ -406,6 +406,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             if (saved.syncToCalendar) {
                 refreshDeviceCalendarEvents()
             }
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             showStatus("✨ Rotina '${saved.title}' salva e agendada!")
         }
     }
@@ -413,6 +414,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     fun toggleRoutineEnabled(routine: RoutineEntity, enabled: Boolean) {
         viewModelScope.launch {
             repository.toggleRoutineEnabled(routine, enabled)
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             val msg = if (enabled) "Ativada: ${routine.title}" else "Pausada: ${routine.title}"
             showStatus(msg)
         }
@@ -422,6 +424,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.deleteRoutine(routine)
             editorStateFlow.value = false to null
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             showStatus("Rotina '${routine.title}' removida.")
         }
     }
@@ -437,6 +440,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
                 source = CheckInSource.IN_APP,
                 note = note.ifBlank { "Check-in confirmado no app" }
             )
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             // Trigger 8-bit pixel confetti burst!
             confettiTriggerFlow.value = confettiTriggerFlow.value + 1
 
@@ -598,6 +602,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     fun selectTheme(themeType: PixelThemeType) {
         viewModelScope.launch {
             prefsRepo.setTheme(themeType)
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             showStatus("🎨 Tema alterado para ${themeType.title}!")
         }
     }
@@ -605,6 +610,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     fun selectHeroArtPreference(preference: HeroArtPreference) {
         viewModelScope.launch {
             prefsRepo.setHeroArtPreference(preference)
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
             showStatus("🖼️ Arte do card Hoje ajustada para: ${preference.title}!")
         }
     }
@@ -676,6 +682,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             )
 
             repository.insertJournalEntry(entry)
+            com.example.widget.PixelWidgetUpdater.refreshAll(appContext)
 
             if (isFirstMoodToday) {
                 confettiTriggerFlow.value = confettiTriggerFlow.value + 1
@@ -1113,11 +1120,14 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         val linkedSprite = finishedState.linkedRoutineId?.let { id ->
             uiState.value.routines.firstOrNull { it.id == id }?.sprite
         } ?: com.example.ui.components.PixelSpriteType.BOOK_FOCUS
+        val currentSettings = uiState.value.settings
         NotificationHelper.showPomodoroIntervalFinishedNotification(
             context = appContext,
             title = "🍅 ${alert.headline}",
             message = "${alert.subtitle} ${alert.wellnessTip}",
-            spriteType = linkedSprite
+            spriteType = linkedSprite,
+            themeType = currentSettings.themeType,
+            heroArtPreference = currentSettings.heroArtPreference
         )
     }
 

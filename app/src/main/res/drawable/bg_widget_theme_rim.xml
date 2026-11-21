@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Continuous theme-tinted inner rim hugging the exact Android rounded widget edge -->
+    <item
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp"
+        android:top="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#B3CBA6F7" />
+            <corners android:radius="@dimen/widget_outer_radius" />
+        </shape>
+    </item>
+</layer-list>

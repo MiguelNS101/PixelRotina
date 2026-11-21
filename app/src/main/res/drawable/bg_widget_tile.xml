@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Subtle retro drop shadow -->
+    <item
+        android:left="1.5dp"
+        android:top="1.5dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#CC090A10" />
+            <corners android:radius="@dimen/widget_inner_radius" />
+        </shape>
+    </item>
+    <!-- Tactile dark pixel button face with concentric Android widget inner radius -->
+    <item
+        android:bottom="1.5dp"
+        android:right="1.5dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#D91E2030" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#99CBA6F7" />
+            <corners android:radius="@dimen/widget_inner_radius" />
+        </shape>
+    </item>
+</layer-list>

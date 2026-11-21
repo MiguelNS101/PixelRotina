@@ -45,6 +45,8 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                     null
                 }
 
+                val settings = UserPreferencesRepository(appContext).settingsFlow.first()
+
                 when (action) {
                     AlarmScheduler.ACTION_TRIGGER_REMINDER -> {
                         val targetRoutine = routine ?: RoutineEntity(
@@ -61,13 +63,18 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                                 routineId = targetRoutine.id,
                                 title = targetRoutine.title,
                                 description = targetRoutine.description,
-                                iconName = targetRoutine.sprite.name
+                                iconName = targetRoutine.sprite.name,
+                                themeTypeName = settings.themeType.name,
+                                heroArtId = settings.heroArtPreference.id,
+                                snoozeMinutes = settings.alarmSnoozeMinutes
                             )
                         } else {
                             NotificationHelper.showRoutineNotification(
                                 context = appContext,
                                 routine = targetRoutine,
-                                snoozeMinutes = 15
+                                snoozeMinutes = 15,
+                                themeType = settings.themeType,
+                                heroArtPreference = settings.heroArtPreference
                             )
                         }
 
@@ -86,10 +93,11 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             routineId = -1L,
                             spriteName = "",
                             isDailyEndOfDay = true,
-                            silentUpdate = false
+                            silentUpdate = false,
+                            themeType = settings.themeType,
+                            heroArtPreference = settings.heroArtPreference
                         )
                         if (!isTest) {
-                            val settings = UserPreferencesRepository(appContext).settingsFlow.first()
                             if (settings.dailyCheckInNotifEnabled) {
                                 AlarmScheduler.scheduleDailyCheckInNotification(
                                     context = appContext,
@@ -123,18 +131,28 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             val nextMillis = AlarmScheduler.scheduleRoutine(appContext, routine)
                             dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
                         }
+                        com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
                     }
 
                     AlarmScheduler.ACTION_OK_AND_MOOD -> {
+                        val isFromAlarm = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_FROM_ALARM, false)
                         AlarmRingingService.stopAlarm(appContext)
                         val now = System.currentTimeMillis()
                         val resolvedTitle = routine?.title ?: fallbackTitle
                         val resolvedIcon = routine?.sprite?.name ?: fallbackIcon
-                        val notifId = intent.getIntExtra(
+                        val baseNotifId = intent.getIntExtra(
                             AlarmScheduler.EXTRA_NOTIFICATION_ID,
                             if (routineId > 0L) NotificationHelper.notificationIdForRoutine(routineId)
                             else NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID
                         )
+                        // When coming from a foreground alarm service, use a distinct notification ID so
+                        // stopForeground(REMOVE) never cancels the fresh 5-button Mood notification.
+                        val moodNotifId = if (isFromAlarm) {
+                            NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID + 100 +
+                                (routineId.coerceAtLeast(0L).toInt() % 500)
+                        } else {
+                            baseNotifId
+                        }
 
                         dao.insertCheckIn(
                             CheckInLogEntity(
@@ -144,8 +162,8 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                                 dateKey = DateUtils.todayDateKey(now),
                                 timestamp = now,
                                 statusName = CheckInStatus.COMPLETED.name,
-                                sourceName = CheckInSource.NOTIFICATION_OK.name,
-                                note = "Confirmado via OK + Humor na notificação"
+                                sourceName = if (isFromAlarm) CheckInSource.ALARM_DISMISSED.name else CheckInSource.NOTIFICATION_OK.name,
+                                note = if (isFromAlarm) "Alarme desligado + Humor na notificação" else "Confirmado via OK + Humor na notificação"
                             )
                         )
                         if (routine != null && routine.isEnabled) {
@@ -153,16 +171,19 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
                         }
 
-                        // Silently morph the same notification into Step 1 (Mood selection)
+                        // Silently morph/show Step 1 (5-level Pixel Mood selection 1..5)
                         NotificationHelper.showMoodStepNotification(
                             context = appContext,
-                            notificationId = notifId,
+                            notificationId = moodNotifId,
                             contextTitle = resolvedTitle,
                             routineId = routineId,
                             spriteName = resolvedIcon,
                             isDailyEndOfDay = false,
-                            silentUpdate = true
+                            silentUpdate = true,
+                            themeType = settings.themeType,
+                            heroArtPreference = settings.heroArtPreference
                         )
+                        com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
                     }
 
                     AlarmScheduler.ACTION_NOTIF_PICK_MOOD -> {
@@ -173,7 +194,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                         val moodScore = intent.getIntExtra(AlarmScheduler.EXTRA_MOOD_SCORE, 3).coerceIn(1, 5)
                         val isDaily = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_DAILY_CHECKIN, true)
 
-                        // Silently morph the same notification into Step 2 (Energy selection)
+                        // Silently morph the same notification into Step 2 (Energy/Focus selection 1..5)
                         NotificationHelper.showEnergyStepNotification(
                             context = appContext,
                             notificationId = notifId,
@@ -181,7 +202,9 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             contextTitle = fallbackTitle,
                             routineId = routineId,
                             spriteName = fallbackIcon,
-                            isDailyEndOfDay = isDaily
+                            isDailyEndOfDay = isDaily,
+                            themeType = settings.themeType,
+                            heroArtPreference = settings.heroArtPreference
                         )
                     }
 
@@ -226,6 +249,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                                 pomodoroCyclesSnapshot = 0
                             )
                         )
+                        com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
                     }
 
                     AlarmScheduler.ACTION_DISMISS_ALARM -> {
@@ -250,6 +274,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             val nextMillis = AlarmScheduler.scheduleRoutine(appContext, routine)
                             dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
                         }
+                        com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
                     }
 
                     AlarmScheduler.ACTION_SNOOZE -> {
@@ -275,6 +300,7 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             val snoozeMillis = AlarmScheduler.scheduleSnooze(appContext, routine, snoozeMin)
                             dao.updateRoutine(routine.copy(nextTriggerMillis = snoozeMillis))
                         }
+                        com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
                     }
                 }
             } finally {

@@ -44,6 +44,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     hour = settings.dailyCheckInNotifHour,
                     minute = settings.dailyCheckInNotifMinute
                 )
+                com.example.widget.PixelWidgetUpdater.refreshAllSuspending(appContext)
             } finally {
                 pendingResult.finish()
             }

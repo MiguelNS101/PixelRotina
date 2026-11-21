@@ -618,5 +618,205 @@ class ExampleRobolectricTest {
         assertEquals(4.0f, daySummary.avgMood ?: 0f, 0.01f)
         assertEquals(3.0f, daySummary.avgEnergy ?: 0f, 0.01f)
     }
+
+    @Test
+    fun `full art pixel notifications inflate RemoteViews cleanly with all 5 mood and energy buttons`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        // 1. Verify 8x8 pixel mood & energy bitmaps for levels 1..5
+        for (level in 1..5) {
+            val moodBmp = com.example.ui.components.createPixelMoodBitmap(level, 64)
+            val energyBmp = com.example.ui.components.createPixelEnergyBitmap(level, 64)
+            assertEquals(64, moodBmp.width)
+            assertEquals(64, moodBmp.height)
+            assertEquals(64, energyBmp.width)
+            assertEquals(64, energyBmp.height)
+            assertTrue("Mood center pixel for level $level should not be transparent", moodBmp.getPixel(32, 32) != 0)
+            assertTrue("Energy center pixel for level $level should not be transparent", energyBmp.getPixel(32, 32) != 0)
+        }
+
+        val parent = android.widget.FrameLayout(context)
+
+        // 2. Mood Step 1/2 full-art notification with 5 interactive buttons
+        val moodNotif = com.example.alarm.NotificationHelper.buildMoodStepNotification(
+            context = context,
+            isDailyEndOfDay = true,
+            themeType = PixelThemeType.CATPPUCCIN_MOCHA,
+            heroArtPreference = com.example.data.HeroArtPreference.NIGHT_CAMPFIRE
+        )
+        assertNotNull(moodNotif.contentView)
+        assertNotNull(moodNotif.bigContentView)
+        val moodExpanded = moodNotif.bigContentView.apply(context, parent)
+        assertNotNull(moodExpanded.findViewById(R.id.notif_bg_art))
+        assertNotNull(moodExpanded.findViewById(R.id.notif_btn_level_1))
+        assertNotNull(moodExpanded.findViewById(R.id.notif_btn_level_2))
+        assertNotNull(moodExpanded.findViewById(R.id.notif_btn_level_3))
+        assertNotNull(moodExpanded.findViewById(R.id.notif_btn_level_4))
+        assertNotNull(moodExpanded.findViewById(R.id.notif_btn_level_5))
+
+        // 3. Energy Step 2/2 full-art notification with 5 interactive buttons
+        val energyNotif = com.example.alarm.NotificationHelper.buildEnergyStepNotification(
+            context = context,
+            notificationId = com.example.alarm.NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID,
+            moodScore = 4,
+            isDailyEndOfDay = true,
+            themeType = PixelThemeType.PASTEL_RETRO,
+            heroArtPreference = com.example.data.HeroArtPreference.AFTERNOON_GARDEN
+        )
+        assertNotNull(energyNotif.contentView)
+        assertNotNull(energyNotif.bigContentView)
+        val energyExpanded = energyNotif.bigContentView.apply(context, parent)
+        assertNotNull(energyExpanded.findViewById(R.id.notif_bg_art))
+        assertNotNull(energyExpanded.findViewById(R.id.notif_btn_level_5))
+
+        // 4. Routine full-art notification with 3 pixel buttons
+        val sampleRoutine = RoutineEntity(
+            id = 42L,
+            title = "Beber Água",
+            description = "Um copo fresco agora",
+            categoryName = RoutineCategory.HIDRATACAO.name,
+            spriteName = PixelSpriteType.WATER_DROP.name
+        )
+        val routineNotif = com.example.alarm.NotificationHelper.buildRoutineNotification(
+            context = context,
+            routine = sampleRoutine,
+            snoozeMinutes = 15,
+            themeType = PixelThemeType.CATPPUCCIN_MOCHA,
+            heroArtPreference = com.example.data.HeroArtPreference.MORNING_RAIN
+        )
+        assertNotNull(routineNotif.contentView)
+        assertNotNull(routineNotif.bigContentView)
+        val routineCollapsed = routineNotif.contentView.apply(context, parent)
+        val routineExpanded = routineNotif.bigContentView.apply(context, parent)
+        assertNotNull(routineCollapsed.findViewById(R.id.notif_btn_ok_collapsed))
+        assertNotNull(routineExpanded.findViewById(R.id.notif_btn_ok))
+        assertNotNull(routineExpanded.findViewById(R.id.notif_btn_ok_mood))
+        assertNotNull(routineExpanded.findViewById(R.id.notif_btn_snooze))
+
+        // 5. Pomodoro full-art notification
+        val pomodoroNotif = com.example.alarm.NotificationHelper.buildPomodoroIntervalFinishedNotification(
+            context = context,
+            title = "🍅 Foco Concluído!",
+            message = "Hora de descansar 5 min.",
+            heroArtPreference = com.example.data.HeroArtPreference.AFTERNOON_LIBRARY
+        )
+        assertNotNull(pomodoroNotif.bigContentView)
+        val pomodoroExpanded = pomodoroNotif.bigContentView.apply(context, parent)
+        assertNotNull(pomodoroExpanded.findViewById(R.id.notif_bg_art))
+
+        // 6. Persistent Alarm full-art notification with Desligar, OK+Humor, Snooze
+        val alarmNotif = com.example.alarm.NotificationHelper.buildPersistentAlarmForegroundNotification(
+            context = context,
+            routineId = 77L,
+            title = "Tomar Vitamina",
+            description = "Logo após o café",
+            iconName = PixelSpriteType.ALARM_BELL.name,
+            snoozeMinutes = 10,
+            themeType = PixelThemeType.CATPPUCCIN_MOCHA,
+            heroArtPreference = com.example.data.HeroArtPreference.MORNING_SUNRISE
+        )
+        assertNotNull(alarmNotif.contentView)
+        assertNotNull(alarmNotif.bigContentView)
+        val alarmCollapsed = alarmNotif.contentView.apply(context, parent)
+        val alarmExpanded = alarmNotif.bigContentView.apply(context, parent)
+        assertNotNull(alarmCollapsed.findViewById(R.id.notif_btn_dismiss_collapsed))
+        assertNotNull(alarmExpanded.findViewById(R.id.notif_btn_dismiss))
+        assertNotNull(alarmExpanded.findViewById(R.id.notif_btn_ok_mood))
+        assertNotNull(alarmExpanded.findViewById(R.id.notif_btn_snooze))
+    }
+
+    @Test
+    fun `all 4 pixel art home screen widgets render bitmaps and inflate cleanly across states`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val parent = android.widget.FrameLayout(context)
+
+        // Verify new widget pixel art bitmaps
+        val goldMedal = com.example.ui.components.createPixelMedalBitmap(PixelMedalTier.GOLD, true, 80)
+        val flame = com.example.ui.components.createPixelStreakFlameBitmap(true, 64)
+        val bar = com.example.ui.components.createPixelProgressBarBitmap(75, 360, 22)
+        assertEquals(80, goldMedal.width)
+        assertEquals(64, flame.width)
+        assertEquals(360, bar.width)
+        assertTrue("goldMedal center pixel should be non-zero", goldMedal.getPixel(40, 48) != 0)
+        assertTrue("flame center pixel should be non-zero", flame.getPixel(32, 40) != 0)
+        assertTrue("bar border pixel at (0,0) should be non-zero", bar.getPixel(0, 0) != 0)
+        assertTrue("bar track pixel at (3,3) should be non-zero", bar.getPixel(3, 3) != 0)
+        assertTrue("bar filled segment pixel at (5,5) should be non-zero", bar.getPixel(5, 5) != 0)
+
+        val sampleRoutine = RoutineEntity(
+            id = 101L,
+            title = "Alongar Postura",
+            categoryName = RoutineCategory.CORPO_MENTE.name,
+            spriteName = PixelSpriteType.LOTUS_MIND.name,
+            hour = 14,
+            minute = 30
+        )
+        val snapshotStep1 = com.example.widget.PixelWidgetSnapshot(
+            themeType = PixelThemeType.CATPPUCCIN_MOCHA,
+            heroArtPreference = com.example.data.HeroArtPreference.AFTERNOON_GARDEN,
+            streakSummary = com.example.ui.StreakMedalSummary(
+                hasActiveRoutinesToday = true,
+                todayCompletedCount = 3,
+                todayTargetCount = 4,
+                todayCompletionPercent = 75,
+                todayMedal = PixelMedalTier.SILVER,
+                currentStreakDays = 5
+            ),
+            todayRoutines = listOf(
+                com.example.widget.WidgetRoutineRow(sampleRoutine, completedToday = 0, targetToday = 1)
+            ),
+            todayAvgMood = 4.2f,
+            todayAvgEnergy = 3.8f,
+            todayMoodCount = 2,
+            pendingMoodScore = null
+        )
+
+        // Widget 1: 2x2 Streak & Medal
+        val streakView = com.example.widget.PixelWidgetRenderer
+            .buildStreakMedalRemoteViews(context, snapshotStep1)
+            .apply(context, parent)
+        assertEquals(android.R.id.background, streakView.id)
+        assertNotNull(streakView.findViewById(R.id.widget_root))
+        assertNotNull(streakView.findViewById(R.id.widget_accent_bar))
+        assertNotNull(streakView.findViewById(R.id.widget_medal_icon))
+        assertNotNull(streakView.findViewById(R.id.widget_progress_bar))
+
+        // Widget 2: 4x1 Mood Quick (Step 1 Mood + Step 2 Energy)
+        val moodStep1View = com.example.widget.PixelWidgetRenderer
+            .buildMoodQuickRemoteViews(context, snapshotStep1)
+            .apply(context, parent)
+        assertEquals(android.R.id.background, moodStep1View.id)
+        assertNotNull(moodStep1View.findViewById(R.id.widget_accent_bar))
+        assertNotNull(moodStep1View.findViewById(R.id.widget_btn_level_1))
+        assertNotNull(moodStep1View.findViewById(R.id.widget_btn_level_5))
+
+        val moodStep2View = com.example.widget.PixelWidgetRenderer
+            .buildMoodQuickRemoteViews(context, snapshotStep1.copy(pendingMoodScore = 4))
+            .apply(context, parent)
+        assertNotNull(moodStep2View.findViewById(R.id.widget_mood_reset_btn))
+
+        // Widget 3: 4x2 Today Card & Routine Checklist
+        val todayCardView = com.example.widget.PixelWidgetRenderer
+            .buildTodayCardRemoteViews(context, snapshotStep1)
+            .apply(context, parent)
+        assertEquals(android.R.id.background, todayCardView.id)
+        assertNotNull(todayCardView.findViewById(R.id.widget_accent_bar))
+        assertNotNull(todayCardView.findViewById(R.id.widget_row_1_ok))
+        assertNotNull(todayCardView.findViewById(R.id.widget_refresh_btn))
+
+        // Widget 4: 4x4 Full Pixel Dashboard
+        val dashboardView = com.example.widget.PixelWidgetRenderer
+            .buildDashboardLargeRemoteViews(context, snapshotStep1)
+            .apply(context, parent)
+        assertEquals(android.R.id.background, dashboardView.id)
+        assertNotNull(dashboardView.findViewById(R.id.widget_accent_bar))
+        assertNotNull(dashboardView.findViewById(R.id.widget_row_1_ok))
+        assertNotNull(dashboardView.findViewById(R.id.widget_btn_level_5))
+        assertNotNull(dashboardView.findViewById(R.id.widget_tab_today))
+        assertNotNull(dashboardView.findViewById(R.id.widget_tab_journal))
+        assertNotNull(dashboardView.findViewById(R.id.widget_tab_report))
+    }
 }
+
+
 

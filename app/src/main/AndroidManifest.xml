@@ -99,6 +99,72 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Home Screen Widget 1 (2x2): Medalha Pixel Art & Sequência -->
+        <receiver
+            android:name=".widget.PixelStreakMedalWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_streak_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_streak_medal" />
+        </receiver>
+
+        <!-- Home Screen Widget 2 (4x1): Check-in Rápido Humor & Energia (1 a 5) -->
+        <receiver
+            android:name=".widget.PixelMoodQuickWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_mood_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_mood_quick" />
+        </receiver>
+
+        <!-- Home Screen Widget 3 (4x2): Card Hoje & Próximas Rotinas com OK rápido -->
+        <receiver
+            android:name=".widget.PixelTodayCardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_today_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_today_card" />
+        </receiver>
+
+        <!-- Home Screen Widget 4 (4x4): Painel Completo PixelRotina -->
+        <receiver
+            android:name=".widget.PixelDashboardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_dashboard_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_dashboard_large" />
+        </receiver>
+
+        <!-- Receiver para cliques interativos direto dos Widgets -->
+        <receiver
+            android:name=".widget.PixelWidgetActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.widget.ACTION_COMPLETE_ROUTINE" />
+                <action android:name="com.example.widget.ACTION_PICK_MOOD" />
+                <action android:name="com.example.widget.ACTION_PICK_ENERGY" />
+                <action android:name="com.example.widget.ACTION_RESET_MOOD" />
+                <action android:name="com.example.widget.ACTION_REFRESH" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

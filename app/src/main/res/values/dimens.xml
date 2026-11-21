@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fallback corner radii for Android 7–11 (API 24–30) matching modern Android widgets -->
+    <dimen name="widget_outer_radius">16dp</dimen>
+    <dimen name="widget_inner_radius">10dp</dimen>
+    <dimen name="widget_badge_radius">8dp</dimen>
+    <dimen name="widget_content_padding">12dp</dimen>
+    <dimen name="widget_compact_padding_h">12dp</dimen>
+    <dimen name="widget_compact_padding_v">9dp</dimen>
+</resources>

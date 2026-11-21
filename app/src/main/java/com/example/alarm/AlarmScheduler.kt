@@ -34,6 +34,9 @@ object AlarmScheduler {
     const val EXTRA_ENERGY_SCORE = "extra_energy_score"
     const val EXTRA_IS_DAILY_CHECKIN = "extra_is_daily_checkin"
     const val EXTRA_OPEN_TAB = "extra_open_tab"
+    const val EXTRA_THEME_TYPE = "extra_theme_type"
+    const val EXTRA_HERO_ART_ID = "extra_hero_art_id"
+    const val EXTRA_IS_FROM_ALARM = "extra_is_from_alarm"
 
     const val DAILY_CHECKIN_REQUEST_CODE = 98_701
 

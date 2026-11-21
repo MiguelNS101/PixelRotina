@@ -11,6 +11,9 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.widget.RemoteViews
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -18,11 +21,17 @@ import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.AlertMode
+import com.example.data.HeroArtPreference
 import com.example.data.RoutineEntity
 import com.example.ui.components.PixelSpriteType
 import com.example.ui.components.createNotificationLargeBitmap
 import com.example.ui.components.createNotificationSmallBitmap
+import com.example.ui.components.createPixelEnergyBitmap
+import com.example.ui.components.createPixelMoodBitmap
 import com.example.ui.components.defaultMainColorArgb
+import com.example.ui.components.moodLabelPt
+import com.example.ui.theme.PixelThemeType
+import com.example.ui.theme.getPixelPalette
 
 object NotificationHelper {
 
@@ -103,13 +112,36 @@ object NotificationHelper {
         }
     }
 
-    fun showRoutineNotification(
+    @DrawableRes
+    private fun resolveHeroArtDrawable(heroArtPreference: HeroArtPreference): Int {
+        return heroArtPreference.resolveForHour().drawableRes ?: R.drawable.img_pixel_hero_banner
+    }
+
+    private fun resolveHeroSceneTag(heroArtPreference: HeroArtPreference): String {
+        return when (heroArtPreference.resolveForHour()) {
+            HeroArtPreference.MORNING -> "☀ MANHÃ"
+            HeroArtPreference.MORNING_RAIN -> "🌧 CHUVA"
+            HeroArtPreference.MORNING_SUNRISE -> "🍵 MATCHA"
+            HeroArtPreference.AFTERNOON -> "🌤 TARDE"
+            HeroArtPreference.AFTERNOON_GARDEN -> "🌿 JARDIM"
+            HeroArtPreference.AFTERNOON_LIBRARY -> "📚 ESTUDOS"
+            HeroArtPreference.EVENING -> "🌇 CREPÚSCULO"
+            HeroArtPreference.EVENING_ROOFTOP -> "🌆 TERRAÇO"
+            HeroArtPreference.NIGHT -> "🌙 NOITE"
+            HeroArtPreference.NIGHT_CATPPUCCIN -> "🐾 GATINHO"
+            HeroArtPreference.NIGHT_CAMPFIRE -> "🔥 LAGO"
+            HeroArtPreference.AUTO -> "✦ PIXEL"
+        }
+    }
+
+    fun buildRoutineNotification(
         context: Context,
         routine: RoutineEntity,
-        snoozeMinutes: Int = 15
-    ) {
+        snoozeMinutes: Int = 15,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ): Notification {
         ensureChannelsCreated(context)
-        if (!hasNotificationPermission(context)) return
 
         val notificationId = notificationIdForRoutine(routine.id)
         val isQuickOk = routine.alertMode == AlertMode.QUICK_OK_NOTIFICATION
@@ -168,44 +200,78 @@ object NotificationHelper {
         val subtitle = if (routine.description.isNotBlank()) {
             routine.description
         } else if (isQuickOk) {
-            "Toque em 'OK! Feito' ou em 'OK + Humor' para já registrar como está agora."
+            "Conclua com OK ou registre seu humor e foco agora."
         } else {
             "Momento da sua rotina de ${routine.category.label.lowercase()}."
         }
 
         val activitySprite = routine.sprite
         val smallIconCompat = IconCompat.createWithBitmap(activitySprite.createNotificationSmallBitmap(64))
-        val largeBitmap = activitySprite.createNotificationLargeBitmap(128)
+        val spriteBitmap = activitySprite.createNotificationLargeBitmap(96)
+        val palette = getPixelPalette(themeType)
+        val accentColorArgb = palette.primary.toArgb()
+        val heroRes = resolveHeroArtDrawable(heroArtPreference)
+        val sceneTag = resolveHeroSceneTag(heroArtPreference)
 
-        val builder = NotificationCompat.Builder(context, channelId)
+        // Full-art collapsed custom view
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notif_routine_collapsed).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_title, routine.title.uppercase())
+            setTextViewText(R.id.notif_subtitle, subtitle)
+            setOnClickPendingIntent(R.id.notif_btn_ok_collapsed, okPendingIntent)
+        }
+
+        // Full-art expanded custom view with hero scene art + 3 pixel buttons
+        val expandedViews = RemoteViews(context.packageName, R.layout.notif_routine_expanded).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_category_badge, "★ ${routine.category.label.uppercase()}")
+            setTextViewText(R.id.notif_scene_badge, sceneTag)
+            setTextViewText(R.id.notif_title, routine.title)
+            setTextViewText(R.id.notif_subtitle, subtitle)
+            setTextViewText(R.id.notif_btn_snooze, "⏰ +${snoozeMinutes}M")
+            setOnClickPendingIntent(R.id.notif_btn_ok, okPendingIntent)
+            setOnClickPendingIntent(R.id.notif_btn_ok_mood, okAndMoodPendingIntent)
+            setOnClickPendingIntent(R.id.notif_btn_snooze, snoozePendingIntent)
+        }
+
+        return NotificationCompat.Builder(context, channelId)
             .setSmallIcon(smallIconCompat)
-            .setLargeIcon(largeBitmap)
             .setColor(activitySprite.defaultMainColorArgb())
             .setContentTitle("${routine.title} • ${routine.category.label}")
             .setContentText(subtitle)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(subtitle))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setCustomHeadsUpContentView(collapsedViews)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(
-                android.R.drawable.checkbox_on_background,
-                context.getString(R.string.action_ok_done),
-                okPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_menu_edit,
-                context.getString(R.string.action_ok_with_mood),
-                okAndMoodPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_menu_recent_history,
-                "Adiar +${snoozeMinutes}m",
-                snoozePendingIntent
-            )
+            .build()
+    }
 
+    fun showRoutineNotification(
+        context: Context,
+        routine: RoutineEntity,
+        snoozeMinutes: Int = 15,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ) {
+        ensureChannelsCreated(context)
+        if (!hasNotificationPermission(context)) return
+
+        val notification = buildRoutineNotification(
+            context = context,
+            routine = routine,
+            snoozeMinutes = snoozeMinutes,
+            themeType = themeType,
+            heroArtPreference = heroArtPreference
+        )
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            NotificationManagerCompat.from(context).notify(notificationIdForRoutine(routine.id), notification)
         } catch (_: SecurityException) {
             // Ignored if permission was revoked
         }
@@ -217,7 +283,9 @@ object NotificationHelper {
         title: String,
         description: String,
         iconName: String = "",
-        snoozeMinutes: Int = 10
+        snoozeMinutes: Int = 10,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
     ): Notification {
         ensureChannelsCreated(context)
         val notificationId = notificationIdForRoutine(routineId)
@@ -248,6 +316,21 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val okAndMoodIntent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
+            action = AlarmScheduler.ACTION_OK_AND_MOOD
+            putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
+            putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
+            putExtra(AlarmScheduler.EXTRA_ROUTINE_ICON, iconName)
+            putExtra(AlarmScheduler.EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(AlarmScheduler.EXTRA_IS_FROM_ALARM, true)
+        }
+        val okAndMoodPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId + 4500,
+            okAndMoodIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val snoozeIntent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
             action = AlarmScheduler.ACTION_SNOOZE
             putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
@@ -262,21 +345,48 @@ object NotificationHelper {
         )
 
         val bodyText = description.ifBlank {
-            "Alarme de rotina ativo! Toque para desligar e concluir."
+            "Alarme ativo! Desligue ou toque em OK+Humor para registrar como está."
         }
 
         val activitySprite = PixelSpriteType.entries.firstOrNull { it.name == iconName }
             ?: PixelSpriteType.ALARM_BELL
         val smallIconCompat = IconCompat.createWithBitmap(activitySprite.createNotificationSmallBitmap(64))
-        val largeBitmap = activitySprite.createNotificationLargeBitmap(128)
+        val spriteBitmap = activitySprite.createNotificationLargeBitmap(96)
+        val palette = getPixelPalette(themeType)
+        val accentColorArgb = palette.alarmCoral.toArgb()
+        val heroRes = resolveHeroArtDrawable(heroArtPreference)
+        val sceneTag = resolveHeroSceneTag(heroArtPreference)
+
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notif_alarm_collapsed).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_title, "🔔 ${title.uppercase()}")
+            setTextViewText(R.id.notif_subtitle, bodyText)
+            setOnClickPendingIntent(R.id.notif_btn_dismiss_collapsed, dismissPendingIntent)
+        }
+
+        val expandedViews = RemoteViews(context.packageName, R.layout.notif_alarm_expanded).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_scene_badge, sceneTag)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, bodyText)
+            setTextViewText(R.id.notif_btn_snooze, "⏰ +${snoozeMinutes}M")
+            setOnClickPendingIntent(R.id.notif_btn_dismiss, dismissPendingIntent)
+            setOnClickPendingIntent(R.id.notif_btn_ok_mood, okAndMoodPendingIntent)
+            setOnClickPendingIntent(R.id.notif_btn_snooze, snoozePendingIntent)
+        }
 
         return NotificationCompat.Builder(context, CHANNEL_PERSISTENT_ALARM)
             .setSmallIcon(smallIconCompat)
-            .setLargeIcon(largeBitmap)
-            .setColor(activitySprite.defaultMainColorArgb())
+            .setColor(accentColorArgb)
             .setContentTitle("🔔 ALARME: $title")
             .setContentText(bodyText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setCustomHeadsUpContentView(expandedViews)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -284,27 +394,18 @@ object NotificationHelper {
             .setAutoCancel(false)
             .setContentIntent(fullScreenPendingIntent)
             .setFullScreenIntent(fullScreenPendingIntent, true)
-            .addAction(
-                android.R.drawable.checkbox_on_background,
-                context.getString(R.string.action_dismiss_alarm),
-                dismissPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_menu_recent_history,
-                context.getString(R.string.action_snooze_alarm),
-                snoozePendingIntent
-            )
             .build()
     }
 
-    fun showPomodoroIntervalFinishedNotification(
+    fun buildPomodoroIntervalFinishedNotification(
         context: Context,
         title: String,
         message: String,
-        spriteType: PixelSpriteType = PixelSpriteType.BOOK_FOCUS
-    ) {
+        spriteType: PixelSpriteType = PixelSpriteType.BOOK_FOCUS,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ): Notification {
         ensureChannelsCreated(context)
-        if (!hasNotificationPermission(context)) return
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -317,42 +418,86 @@ object NotificationHelper {
         )
 
         val smallIconCompat = IconCompat.createWithBitmap(spriteType.createNotificationSmallBitmap(64))
-        val largeBitmap = spriteType.createNotificationLargeBitmap(128)
+        val spriteBitmap = spriteType.createNotificationLargeBitmap(96)
+        val palette = getPixelPalette(themeType)
+        val accentColorArgb = palette.accent.toArgb()
+        val heroRes = resolveHeroArtDrawable(heroArtPreference)
+        val sceneTag = resolveHeroSceneTag(heroArtPreference)
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_SCHEDULED)
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notif_mood_energy_collapsed).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, message)
+            setTextViewText(R.id.notif_step_badge, "🍅 FIM")
+        }
+
+        val expandedViews = RemoteViews(context.packageName, R.layout.notif_pomodoro_expanded).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_scene_badge, sceneTag)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, message)
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_SCHEDULED)
             .setSmallIcon(smallIconCompat)
-            .setLargeIcon(largeBitmap)
             .setColor(spriteType.defaultMainColorArgb())
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setCustomHeadsUpContentView(collapsedViews)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
+            .build()
+    }
 
+    fun showPomodoroIntervalFinishedNotification(
+        context: Context,
+        title: String,
+        message: String,
+        spriteType: PixelSpriteType = PixelSpriteType.BOOK_FOCUS,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ) {
+        ensureChannelsCreated(context)
+        if (!hasNotificationPermission(context)) return
+
+        val notification = buildPomodoroIntervalFinishedNotification(
+            context = context,
+            title = title,
+            message = message,
+            spriteType = spriteType,
+            themeType = themeType,
+            heroArtPreference = heroArtPreference
+        )
         try {
-            NotificationManagerCompat.from(context).notify(49_990, builder.build())
+            NotificationManagerCompat.from(context).notify(49_990, notification)
         } catch (_: SecurityException) {
             // Ignored if permission was revoked
         }
     }
 
     /**
-     * Step 1 of 2: Interactive notification asking for Mood right in the notification shade.
-     * Used both for the configurable End-of-Day Daily Check-in and right after tapping "OK + Humor" on a routine.
+     * Step 1 of 2: Full-art pixel notification with all 5 Mood levels (1..5) rendered as real 8-bit sprites.
      */
-    fun showMoodStepNotification(
+    fun buildMoodStepNotification(
         context: Context,
         notificationId: Int = DAILY_CHECKIN_NOTIFICATION_ID,
         contextTitle: String = "",
         routineId: Long = -1L,
         spriteName: String = "",
         isDailyEndOfDay: Boolean = true,
-        silentUpdate: Boolean = false
-    ) {
+        silentUpdate: Boolean = false,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ): Notification {
         ensureChannelsCreated(context)
-        if (!hasNotificationPermission(context)) return
 
         val openJournalIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -365,7 +510,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        fun moodActionPendingIntent(moodScore: Int, offset: Int): PendingIntent {
+        fun moodActionPendingIntent(moodScore: Int): PendingIntent {
             val intent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
                 action = AlarmScheduler.ACTION_NOTIF_PICK_MOOD
                 putExtra(AlarmScheduler.EXTRA_NOTIFICATION_ID, notificationId)
@@ -377,7 +522,7 @@ object NotificationHelper {
             }
             return PendingIntent.getBroadcast(
                 context,
-                notificationId + 6100 + offset,
+                notificationId + 6100 + moodScore,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
@@ -386,57 +531,137 @@ object NotificationHelper {
         val sprite = PixelSpriteType.entries.firstOrNull { it.name == spriteName }
             ?: if (isDailyEndOfDay) PixelSpriteType.MOON_REST else PixelSpriteType.SPARKLE_OK
         val smallIconCompat = IconCompat.createWithBitmap(sprite.createNotificationSmallBitmap(64))
-        val largeBitmap = sprite.createNotificationLargeBitmap(128)
+        val spriteBitmap = sprite.createNotificationLargeBitmap(96)
+        val palette = getPixelPalette(themeType)
+        val accentColorArgb = palette.primary.toArgb()
+        val heroRes = resolveHeroArtDrawable(heroArtPreference)
+        val sceneTag = resolveHeroSceneTag(heroArtPreference)
 
         val title = if (isDailyEndOfDay) {
-            "🌙 Check-in do Fim do Dia"
+            "CHECK-IN DO FIM DO DIA"
         } else {
-            "✓ $contextTitle concluída!"
+            "✓ ${contextTitle.uppercase()}"
         }
         val body = if (isDailyEndOfDay) {
-            "Passo 1/2 — Como foi seu humor hoje? Responda aqui ou toque para abrir o Diário."
+            "Como foi seu humor hoje? Escolha de 1 a 5:"
         } else {
-            "Passo 1/2 — Como está seu humor agora? (Vai para sua média do dia)"
+            "Como está seu humor agora? (Vai p/ sua média do dia)"
         }
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_DAILY_CHECKIN)
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notif_mood_energy_collapsed).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, "Expanda p/ 5 níveis de humor (1–5) ▼")
+            setTextViewText(R.id.notif_step_badge, "1/2")
+        }
+
+        val expandedViews = RemoteViews(context.packageName, R.layout.notif_mood_energy_expanded).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, spriteBitmap)
+            setTextViewText(R.id.notif_step_badge, "PASSO 1/2 • HUMOR")
+            setTextViewText(R.id.notif_scene_badge, sceneTag)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, body)
+
+            val shortLabels = listOf("Esgot.", "Baixo", "Estáv.", "Bem", "Ótimo")
+            val btnIds = intArrayOf(
+                R.id.notif_btn_level_1,
+                R.id.notif_btn_level_2,
+                R.id.notif_btn_level_3,
+                R.id.notif_btn_level_4,
+                R.id.notif_btn_level_5
+            )
+            val iconIds = intArrayOf(
+                R.id.notif_icon_level_1,
+                R.id.notif_icon_level_2,
+                R.id.notif_icon_level_3,
+                R.id.notif_icon_level_4,
+                R.id.notif_icon_level_5
+            )
+            val labelIds = intArrayOf(
+                R.id.notif_label_level_1,
+                R.id.notif_label_level_2,
+                R.id.notif_label_level_3,
+                R.id.notif_label_level_4,
+                R.id.notif_label_level_5
+            )
+
+            for (i in 0 until 5) {
+                val level = i + 1
+                setImageViewBitmap(iconIds[i], createPixelMoodBitmap(level, 64))
+                setTextViewText(labelIds[i], shortLabels[i])
+                setOnClickPendingIntent(btnIds[i], moodActionPendingIntent(level))
+            }
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_DAILY_CHECKIN)
             .setSmallIcon(smallIconCompat)
-            .setLargeIcon(largeBitmap)
             .setColor(sprite.defaultMainColorArgb())
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setCustomHeadsUpContentView(expandedViews)
             .setPriority(if (silentUpdate) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setSilent(silentUpdate)
             .setOnlyAlertOnce(silentUpdate)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(0, "😔 Baixo", moodActionPendingIntent(2, 1))
-            .addAction(0, "😐 Neutro", moodActionPendingIntent(3, 2))
-            .addAction(0, "😄 Alto", moodActionPendingIntent(5, 3))
+            .build()
+    }
 
+    fun showMoodStepNotification(
+        context: Context,
+        notificationId: Int = DAILY_CHECKIN_NOTIFICATION_ID,
+        contextTitle: String = "",
+        routineId: Long = -1L,
+        spriteName: String = "",
+        isDailyEndOfDay: Boolean = true,
+        silentUpdate: Boolean = false,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ) {
+        ensureChannelsCreated(context)
+        if (!hasNotificationPermission(context)) return
+
+        val notification = buildMoodStepNotification(
+            context = context,
+            notificationId = notificationId,
+            contextTitle = contextTitle,
+            routineId = routineId,
+            spriteName = spriteName,
+            isDailyEndOfDay = isDailyEndOfDay,
+            silentUpdate = silentUpdate,
+            themeType = themeType,
+            heroArtPreference = heroArtPreference
+        )
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
         } catch (_: SecurityException) {
             // Ignored if permission was revoked
         }
     }
 
     /**
-     * Step 2 of 2: Silently morphs the same notification in-place to ask for Energy after Mood was picked.
+     * Step 2 of 2: Silently morphs the same full-art pixel notification in-place to show all 5 Energy/Focus
+     * battery levels (1..5) rendered as real 8-bit sprites.
      */
-    fun showEnergyStepNotification(
+    fun buildEnergyStepNotification(
         context: Context,
         notificationId: Int,
         moodScore: Int,
         contextTitle: String = "",
         routineId: Long = -1L,
         spriteName: String = "",
-        isDailyEndOfDay: Boolean = true
-    ) {
+        isDailyEndOfDay: Boolean = true,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ): Notification {
         ensureChannelsCreated(context)
-        if (!hasNotificationPermission(context)) return
 
         val openJournalIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -449,7 +674,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        fun energyActionPendingIntent(energyScore: Int, offset: Int): PendingIntent {
+        fun energyActionPendingIntent(energyScore: Int): PendingIntent {
             val intent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
                 action = AlarmScheduler.ACTION_NOTIF_PICK_ENERGY
                 putExtra(AlarmScheduler.EXTRA_NOTIFICATION_ID, notificationId)
@@ -461,7 +686,7 @@ object NotificationHelper {
             }
             return PendingIntent.getBroadcast(
                 context,
-                notificationId + 7100 + offset,
+                notificationId + 7100 + energyScore,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
@@ -470,40 +695,113 @@ object NotificationHelper {
         val sprite = PixelSpriteType.entries.firstOrNull { it.name == spriteName }
             ?: if (isDailyEndOfDay) PixelSpriteType.MOON_REST else PixelSpriteType.SPARKLE_OK
         val smallIconCompat = IconCompat.createWithBitmap(sprite.createNotificationSmallBitmap(64))
-        val largeBitmap = sprite.createNotificationLargeBitmap(128)
+        val moodIconBitmap = createPixelMoodBitmap(moodScore, 64)
+        val palette = getPixelPalette(themeType)
+        val accentColorArgb = palette.wellnessGreen.toArgb()
+        val heroRes = resolveHeroArtDrawable(heroArtPreference)
+        val sceneTag = resolveHeroSceneTag(heroArtPreference)
 
-        val moodBadge = when {
-            moodScore <= 2 -> "😔 Baixo ($moodScore/5)"
-            moodScore == 3 -> "😐 Neutro (3/5)"
-            else -> "😄 Alto ($moodScore/5)"
-        }
-
-        val title = "Humor: $moodBadge • Passo 2/2"
+        val clampedMood = moodScore.coerceIn(1, 5)
+        val title = "HUMOR $clampedMood/5 (${moodLabelPt(clampedMood).uppercase()})"
         val body = if (isDailyEndOfDay) {
-            "E como está sua energia hoje? Toque abaixo para salvar na sua média diária."
+            "Agora escolha sua energia / foco de hoje (1 a 5):"
         } else {
-            "E como está sua energia agora após '$contextTitle'?"
+            "E sua energia / foco após '$contextTitle'?"
         }
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_DAILY_CHECKIN)
+        val collapsedViews = RemoteViews(context.packageName, R.layout.notif_mood_energy_collapsed).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, moodIconBitmap)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, "Expanda p/ 5 níveis de energia/foco (1–5) ▼")
+            setTextViewText(R.id.notif_step_badge, "2/2")
+        }
+
+        val expandedViews = RemoteViews(context.packageName, R.layout.notif_mood_energy_expanded).apply {
+            setImageViewResource(R.id.notif_bg_art, heroRes)
+            setInt(R.id.notif_accent_bar, "setBackgroundColor", accentColorArgb)
+            setImageViewBitmap(R.id.notif_sprite_icon, moodIconBitmap)
+            setTextViewText(R.id.notif_step_badge, "PASSO 2/2 • FOCO/ENERGIA")
+            setTextViewText(R.id.notif_scene_badge, sceneTag)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, body)
+
+            val shortLabels = listOf("Crít.", "Baixa", "Média", "Alta", "Máx.")
+            val btnIds = intArrayOf(
+                R.id.notif_btn_level_1,
+                R.id.notif_btn_level_2,
+                R.id.notif_btn_level_3,
+                R.id.notif_btn_level_4,
+                R.id.notif_btn_level_5
+            )
+            val iconIds = intArrayOf(
+                R.id.notif_icon_level_1,
+                R.id.notif_icon_level_2,
+                R.id.notif_icon_level_3,
+                R.id.notif_icon_level_4,
+                R.id.notif_icon_level_5
+            )
+            val labelIds = intArrayOf(
+                R.id.notif_label_level_1,
+                R.id.notif_label_level_2,
+                R.id.notif_label_level_3,
+                R.id.notif_label_level_4,
+                R.id.notif_label_level_5
+            )
+
+            for (i in 0 until 5) {
+                val level = i + 1
+                setImageViewBitmap(iconIds[i], createPixelEnergyBitmap(level, 64))
+                setTextViewText(labelIds[i], shortLabels[i])
+                setOnClickPendingIntent(btnIds[i], energyActionPendingIntent(level))
+            }
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_DAILY_CHECKIN)
             .setSmallIcon(smallIconCompat)
-            .setLargeIcon(largeBitmap)
-            .setColor(sprite.defaultMainColorArgb())
+            .setColor(accentColorArgb)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCustomContentView(collapsedViews)
+            .setCustomBigContentView(expandedViews)
+            .setCustomHeadsUpContentView(expandedViews)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setSilent(true)
             .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(0, "🪫 Baixa", energyActionPendingIntent(2, 1))
-            .addAction(0, "🔋 Média", energyActionPendingIntent(3, 2))
-            .addAction(0, "⚡ Alta", energyActionPendingIntent(5, 3))
+            .build()
+    }
 
+    fun showEnergyStepNotification(
+        context: Context,
+        notificationId: Int,
+        moodScore: Int,
+        contextTitle: String = "",
+        routineId: Long = -1L,
+        spriteName: String = "",
+        isDailyEndOfDay: Boolean = true,
+        themeType: PixelThemeType = PixelThemeType.CATPPUCCIN_MOCHA,
+        heroArtPreference: HeroArtPreference = HeroArtPreference.AUTO
+    ) {
+        ensureChannelsCreated(context)
+        if (!hasNotificationPermission(context)) return
+
+        val notification = buildEnergyStepNotification(
+            context = context,
+            notificationId = notificationId,
+            moodScore = moodScore,
+            contextTitle = contextTitle,
+            routineId = routineId,
+            spriteName = spriteName,
+            isDailyEndOfDay = isDailyEndOfDay,
+            themeType = themeType,
+            heroArtPreference = heroArtPreference
+        )
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
         } catch (_: SecurityException) {
             // Ignored if permission was revoked
         }

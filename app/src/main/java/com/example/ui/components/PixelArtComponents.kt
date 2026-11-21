@@ -43,6 +43,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
@@ -1252,3 +1253,367 @@ fun PixelLockIcon(
         }
     }
 }
+
+/**
+ * Renders the 8x8 Pixel Art Mood Face (levels 1 to 5) into a crisp anti-alias-free Android Bitmap
+ * for full-art custom pixel notifications.
+ */
+fun createPixelMoodBitmap(
+    level: Int,
+    sizePx: Int = 64
+): android.graphics.Bitmap {
+    val clamped = level.coerceIn(1, 5)
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val mainColor = when (clamped) {
+        1 -> 0xFFF38BA8.toInt() // Coral (Esgotado)
+        2 -> 0xFFFAB387.toInt() // Amber/Peach (Baixo)
+        3 -> 0xFF74C7EC.toInt() // Cyan (Estável)
+        4 -> 0xFFCBA6F7.toInt() // Lavender (Bem)
+        else -> 0xFFA6E3A1.toInt() // Mint Green (Radiante)
+    }
+    val outlineColor = 0xFF11111B.toInt()
+    val featureColor = 0xFF181825.toInt()
+    val highlightColor = 0xEBFFFFFF.toInt()
+
+    val grid = when (clamped) {
+        1 -> listOf(
+            "..BBBB..",
+            ".B1111B.",
+            "B121121B",
+            "B111111B",
+            "B112211B",
+            "B121121B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        2 -> listOf(
+            "..BBBB..",
+            ".B1111B.",
+            "B121121B",
+            "B111111B",
+            "B112211B",
+            "B121111B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        3 -> listOf(
+            "..BBBB..",
+            ".BH111B.",
+            "B121121B",
+            "B111111B",
+            "B122221B",
+            "B111111B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        4 -> listOf(
+            "..BBBB..",
+            ".BH111B.",
+            "B121121B",
+            "B111111B",
+            "B121121B",
+            "B112211B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        else -> listOf(
+            "..BBBB..",
+            ".BHH11B.",
+            "B121121B",
+            "BH1111HB",
+            "B122221B",
+            "B112211B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+    }
+
+    val cellW = sizePx / 8f
+    val cellH = sizePx / 8f
+    grid.forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            val color = when (ch) {
+                'B' -> outlineColor
+                '1' -> mainColor
+                '2' -> featureColor
+                'H' -> highlightColor
+                else -> 0
+            }
+            if (color != 0) {
+                paint.color = color
+                val left = colIdx * cellW
+                val top = rowIdx * cellH
+                canvas.drawRect(left, top, left + cellW + 0.5f, top + cellH + 0.5f, paint)
+            }
+        }
+    }
+    return bmp
+}
+
+/**
+ * Renders the 8x8 Pixel Art Energy Battery (levels 1 to 5) into a crisp anti-alias-free Android Bitmap
+ * for full-art custom pixel notifications.
+ */
+fun createPixelEnergyBitmap(
+    level: Int,
+    sizePx: Int = 64
+): android.graphics.Bitmap {
+    val clamped = level.coerceIn(1, 5)
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val barColor = when (clamped) {
+        1 -> 0xFFF38BA8.toInt() // Crítica (Coral)
+        2 -> 0xFFF97316.toInt() // Baixa (Orange)
+        3 -> 0xFFF9E2AF.toInt() // Média (Amber)
+        4 -> 0xFF89B4FA.toInt() // Alta (Sky Blue)
+        else -> 0xFFA6E3A1.toInt() // Máxima (Mint Green)
+    }
+    val outlineColor = 0xFF11111B.toInt()
+    val emptySlotColor = 0x38FFFFFF
+    val highlightColor = 0xC4FFFFFF.toInt()
+
+    val grid = listOf(
+        "..BBBB..",
+        ".BBBBBB.",
+        ".B5555B.",
+        ".B4444B.",
+        ".B3333B.",
+        ".B2222B.",
+        ".B1111B.",
+        ".BBBBBB."
+    )
+
+    val cellW = sizePx / 8f
+    val cellH = sizePx / 8f
+    grid.forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            val color = when (ch) {
+                'B' -> outlineColor
+                '1', '2', '3', '4', '5' -> {
+                    val barIndex = ch.digitToInt()
+                    if (barIndex <= clamped) {
+                        if (colIdx == 2) highlightColor else barColor
+                    } else {
+                        emptySlotColor
+                    }
+                }
+                else -> 0
+            }
+            if (color != 0) {
+                paint.color = color
+                val left = colIdx * cellW
+                val top = rowIdx * cellH
+                canvas.drawRect(left, top, left + cellW + 0.5f, top + cellH + 0.5f, paint)
+            }
+        }
+    }
+    return bmp
+}
+
+/**
+ * Renders the 10x10 Pixel Art Medal (None/Bronze/Silver/Gold) into an anti-alias-free Android Bitmap
+ * for home screen widgets and custom notifications.
+ */
+fun createPixelMedalBitmap(
+    tier: PixelMedalTier,
+    isUnlocked: Boolean = tier != PixelMedalTier.NONE,
+    sizePx: Int = 80
+): android.graphics.Bitmap {
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val effectiveTier = if (isUnlocked) tier else PixelMedalTier.NONE
+    val medalGrid = listOf(
+        ".RR....RR.",
+        ".RRR..RRR.",
+        "..RRRRRR..",
+        "...BBBB...",
+        "..BHHMMB..",
+        ".BHMHHMMB.",
+        ".BMHHHHMB.",
+        ".BMMHHSSB.",
+        "..BMSSSB..",
+        "...BBBB..."
+    )
+
+    val ribbon = if (isUnlocked) effectiveTier.ribbonColor.toArgb() else 0x5594A3B8
+    val main = if (isUnlocked) effectiveTier.discMainColor.toArgb() else 0x5564748B
+    val highlight = if (isUnlocked) effectiveTier.discHighlightColor.toArgb() else 0x77CBD5E1
+    val shadow = if (isUnlocked) effectiveTier.discShadowColor.toArgb() else 0x44475569
+    val outline = if (isUnlocked) 0xFF11111B.toInt() else 0x8811111B.toInt()
+
+    val cellW = sizePx / 10f
+    val cellH = sizePx / 10f
+    medalGrid.forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            val color = when (ch) {
+                'R' -> ribbon
+                'B' -> outline
+                'M' -> main
+                'H' -> highlight
+                'S' -> shadow
+                else -> 0
+            }
+            if (color != 0) {
+                paint.color = color
+                val left = colIdx * cellW
+                val top = rowIdx * cellH
+                canvas.drawRect(left, top, left + cellW + 0.5f, top + cellH + 0.5f, paint)
+            }
+        }
+    }
+
+    if (isUnlocked && tier == PixelMedalTier.GOLD) {
+        paint.color = effectiveTier.discHighlightColor.toArgb()
+        canvas.drawRect(0f, 4f * cellH, cellW, 5f * cellH, paint)
+        canvas.drawRect(9f * cellW, 3f * cellH, 10f * cellW, 4f * cellH, paint)
+    }
+
+    return bmp
+}
+
+/**
+ * Renders the 8x8 Pixel Art Streak Flame into an anti-alias-free Android Bitmap for widgets.
+ */
+fun createPixelStreakFlameBitmap(
+    isActive: Boolean,
+    sizePx: Int = 64
+): android.graphics.Bitmap {
+    val bmp = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val flameGrid = listOf(
+        "....1...",
+        "...111..",
+        "..11211.",
+        ".112221.",
+        "11223211",
+        "11233311",
+        ".113311.",
+        "..1111.."
+    )
+
+    val outerColor = if (isActive) 0xFFF97316.toInt() else 0x6694A3B8
+    val midColor = if (isActive) 0xFFFACC15.toInt() else 0x4464748B
+    val coreColor = if (isActive) 0xFFFEF08A.toInt() else 0x88CBD5E1.toInt()
+
+    val cellW = sizePx / 8f
+    val cellH = sizePx / 8f
+    flameGrid.forEachIndexed { rowIdx, rowStr ->
+        rowStr.forEachIndexed { colIdx, ch ->
+            val color = when (ch) {
+                '1' -> outerColor
+                '2' -> midColor
+                '3' -> coreColor
+                else -> 0
+            }
+            if (color != 0) {
+                paint.color = color
+                val left = colIdx * cellW
+                val top = rowIdx * cellH
+                canvas.drawRect(left, top, left + cellW + 0.5f, top + cellH + 0.5f, paint)
+            }
+        }
+    }
+    return bmp
+}
+
+/**
+ * Renders a crisp segmented 8-bit pixel progress bar Bitmap for home screen widgets.
+ */
+fun createPixelProgressBarBitmap(
+    percent: Int,
+    widthPx: Int = 360,
+    heightPx: Int = 22,
+    fillColorArgb: Int = 0xFFA6E3A1.toInt(),
+    borderColorArgb: Int = 0xFF11111B.toInt(),
+    bgColorArgb: Int = 0xFF1E2030.toInt()
+): android.graphics.Bitmap {
+    val clamped = percent.coerceIn(0, 100)
+    val bmp = android.graphics.Bitmap.createBitmap(
+        widthPx,
+        heightPx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bmp)
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = false
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    val border = 3f
+    // Outer pixel border
+    paint.color = borderColorArgb
+    canvas.drawRect(0f, 0f, widthPx.toFloat(), heightPx.toFloat(), paint)
+
+    // Inner opaque dark track
+    paint.color = bgColorArgb
+    canvas.drawRect(border, border, widthPx - border, heightPx - border, paint)
+
+    // 10 crisp pixel segments
+    val segments = 10
+    val filledSegments = ((clamped + 5) / 10).coerceIn(0, segments)
+    val innerW = widthPx - border * 2f - 4f
+    val segGap = 3f
+    val segW = (innerW - segGap * (segments - 1)) / segments
+    val top = border + 2f
+    val bottom = heightPx - border - 2f
+    val highlightArgb = androidx.core.graphics.ColorUtils.blendARGB(
+        fillColorArgb,
+        0xFFFFFFFF.toInt(),
+        0.38f
+    )
+    val emptySlotArgb = 0xFF31354D.toInt()
+
+    for (i in 0 until segments) {
+        val left = border + 2f + i * (segW + segGap)
+        if (i < filledSegments) {
+            paint.color = fillColorArgb
+            canvas.drawRect(left, top, left + segW, bottom, paint)
+            // Retro top highlight line
+            paint.color = highlightArgb
+            canvas.drawRect(left, top, left + segW, top + 3f, paint)
+        } else {
+            paint.color = emptySlotArgb
+            canvas.drawRect(left, top, left + segW, bottom, paint)
+        }
+    }
+    return bmp
+}
+
+

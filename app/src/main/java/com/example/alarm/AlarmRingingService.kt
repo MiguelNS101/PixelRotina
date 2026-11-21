@@ -148,13 +148,19 @@ class AlarmRingingService : Service() {
             routineId: Long,
             title: String,
             description: String,
-            iconName: String = ""
+            iconName: String = "",
+            themeTypeName: String = "",
+            heroArtId: String = "",
+            snoozeMinutes: Int = 10
         ) {
             val serviceIntent = Intent(context, AlarmRingingService::class.java).apply {
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_ID, routineId)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_TITLE, title)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_DESC, description)
                 putExtra(AlarmScheduler.EXTRA_ROUTINE_ICON, iconName)
+                putExtra(AlarmScheduler.EXTRA_THEME_TYPE, themeTypeName)
+                putExtra(AlarmScheduler.EXTRA_HERO_ART_ID, heroArtId)
+                putExtra(AlarmScheduler.EXTRA_SNOOZE_MINUTES, snoozeMinutes)
             }
             ContextCompat.startForegroundService(context, serviceIntent)
         }
