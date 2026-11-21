@@ -185,7 +185,17 @@ data class UserSettings(
     val soundEnabled: Boolean = true,
     val hasSeededDefaults: Boolean = false,
     val hasCompletedOnboarding: Boolean = false,
-    val lastBackupTimestamp: Long = 0L
+    val lastBackupTimestamp: Long = 0L,
+    val journalPin: String = "",
+    val stealthModeEnabled: Boolean = false,
+    val geminiApiKey: String = "",
+    val geminiModelName: String = "gemini-2.5-flash",
+    val cachedWeeklyPatchNotes: String = "",
+    val cachedPatchNotesDateKey: String = "",
+    val dailyCheckInNotifEnabled: Boolean = true,
+    val dailyCheckInNotifHour: Int = 21,
+    val dailyCheckInNotifMinute: Int = 0,
+    val promptMoodAfterRoutineCheckIn: Boolean = true
 )
 
 class UserPreferencesRepository(private val context: Context) {
@@ -200,6 +210,16 @@ class UserPreferencesRepository(private val context: Context) {
         val HAS_SEEDED_DEFAULTS = booleanPreferencesKey("has_seeded_defaults")
         val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
         val LAST_BACKUP_TIMESTAMP = longPreferencesKey("last_backup_timestamp")
+        val JOURNAL_PIN = stringPreferencesKey("journal_pin")
+        val STEALTH_MODE_ENABLED = booleanPreferencesKey("stealth_mode_enabled")
+        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val GEMINI_MODEL_NAME = stringPreferencesKey("gemini_model_name")
+        val CACHED_WEEKLY_PATCH_NOTES = stringPreferencesKey("cached_weekly_patch_notes")
+        val CACHED_PATCH_NOTES_DATE_KEY = stringPreferencesKey("cached_patch_notes_date_key")
+        val DAILY_CHECKIN_NOTIF_ENABLED = booleanPreferencesKey("daily_checkin_notif_enabled")
+        val DAILY_CHECKIN_NOTIF_HOUR = intPreferencesKey("daily_checkin_notif_hour")
+        val DAILY_CHECKIN_NOTIF_MINUTE = intPreferencesKey("daily_checkin_notif_minute")
+        val PROMPT_MOOD_AFTER_ROUTINE = booleanPreferencesKey("prompt_mood_after_routine")
     }
 
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -212,7 +232,17 @@ class UserPreferencesRepository(private val context: Context) {
             soundEnabled = prefs[Keys.SOUND_ENABLED] ?: true,
             hasSeededDefaults = prefs[Keys.HAS_SEEDED_DEFAULTS] ?: false,
             hasCompletedOnboarding = prefs[Keys.HAS_COMPLETED_ONBOARDING] ?: false,
-            lastBackupTimestamp = prefs[Keys.LAST_BACKUP_TIMESTAMP] ?: 0L
+            lastBackupTimestamp = prefs[Keys.LAST_BACKUP_TIMESTAMP] ?: 0L,
+            journalPin = prefs[Keys.JOURNAL_PIN] ?: "",
+            stealthModeEnabled = prefs[Keys.STEALTH_MODE_ENABLED] ?: false,
+            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: "",
+            geminiModelName = prefs[Keys.GEMINI_MODEL_NAME] ?: "gemini-2.5-flash",
+            cachedWeeklyPatchNotes = prefs[Keys.CACHED_WEEKLY_PATCH_NOTES] ?: "",
+            cachedPatchNotesDateKey = prefs[Keys.CACHED_PATCH_NOTES_DATE_KEY] ?: "",
+            dailyCheckInNotifEnabled = prefs[Keys.DAILY_CHECKIN_NOTIF_ENABLED] ?: true,
+            dailyCheckInNotifHour = (prefs[Keys.DAILY_CHECKIN_NOTIF_HOUR] ?: 21).coerceIn(0, 23),
+            dailyCheckInNotifMinute = (prefs[Keys.DAILY_CHECKIN_NOTIF_MINUTE] ?: 0).coerceIn(0, 59),
+            promptMoodAfterRoutineCheckIn = prefs[Keys.PROMPT_MOOD_AFTER_ROUTINE] ?: true
         )
     }
 
@@ -261,6 +291,58 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun recordBackupTimestamp(timestamp: Long = System.currentTimeMillis()) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAST_BACKUP_TIMESTAMP] = timestamp
+        }
+    }
+
+    suspend fun setJournalPin(pin: String) {
+        val sanitized = pin.filter { it.isDigit() }.take(4)
+        context.dataStore.edit { prefs ->
+            prefs[Keys.JOURNAL_PIN] = sanitized
+        }
+    }
+
+    suspend fun setStealthModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.STEALTH_MODE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setGeminiApiKey(apiKey: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.GEMINI_API_KEY] = apiKey.trim()
+        }
+    }
+
+    suspend fun setGeminiModelName(modelName: String) {
+        val clean = modelName.trim().ifEmpty { "gemini-2.5-flash" }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.GEMINI_MODEL_NAME] = clean
+        }
+    }
+
+    suspend fun saveCachedWeeklyPatchNotes(notes: String, dateKey: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CACHED_WEEKLY_PATCH_NOTES] = notes
+            prefs[Keys.CACHED_PATCH_NOTES_DATE_KEY] = dateKey
+        }
+    }
+
+    suspend fun setDailyCheckInNotifEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DAILY_CHECKIN_NOTIF_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setDailyCheckInNotifTime(hour: Int, minute: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DAILY_CHECKIN_NOTIF_HOUR] = hour.coerceIn(0, 23)
+            prefs[Keys.DAILY_CHECKIN_NOTIF_MINUTE] = minute.coerceIn(0, 59)
+        }
+    }
+
+    suspend fun setPromptMoodAfterRoutineCheckIn(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PROMPT_MOOD_AFTER_ROUTINE] = enabled
         }
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.example.ui.components.PixelMedalTier
 import com.example.ui.theme.PixelThemeType
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,17 +13,27 @@ import java.io.File
 data class BackupRestoreResult(
     val routinesImported: Int,
     val logsImported: Int,
-    val themeRestored: PixelThemeType
+    val themeRestored: PixelThemeType,
+    val journalEntriesImported: Int = 0
+)
+
+data class ParsedBackupData(
+    val theme: PixelThemeType,
+    val routines: List<RoutineEntity>,
+    val checkInLogs: List<CheckInLogEntity>,
+    val journalEntries: List<JournalEntryEntity> = emptyList(),
+    val version: Int = 1
 )
 
 object BackupManager {
 
-    private const val BACKUP_VERSION = 1
+    const val BACKUP_VERSION = 3
 
     fun serializeToJson(
         themeType: PixelThemeType,
         routines: List<RoutineEntity>,
-        checkInLogs: List<CheckInLogEntity>
+        checkInLogs: List<CheckInLogEntity>,
+        journalEntries: List<JournalEntryEntity> = emptyList()
     ): String {
         val root = JSONObject()
         root.put("app", "PixelRotina")
@@ -72,11 +83,35 @@ object BackupManager {
         }
         root.put("checkInLogs", logsArr)
 
+        val journalArr = JSONArray()
+        for (entry in journalEntries) {
+            val obj = JSONObject().apply {
+                put("id", entry.id)
+                put("dateKey", entry.dateKey)
+                put("timestamp", entry.timestamp)
+                put("entryTypeName", entry.entryTypeName)
+                put("moodScore", entry.moodScore ?: JSONObject.NULL)
+                put("energyScore", entry.energyScore ?: JSONObject.NULL)
+                put("contextTagsCsv", entry.contextTagsCsv)
+                put("content", entry.content)
+                put("routineCompletionPercentSnapshot", entry.routineCompletionPercentSnapshot)
+                put("medalSnapshotName", entry.medalSnapshotName)
+                put("pomodoroCyclesSnapshot", entry.pomodoroCyclesSnapshot)
+                put("unlockAtMillis", entry.unlockAtMillis ?: JSONObject.NULL)
+                put("aiReactionModeName", entry.aiReactionModeName)
+                put("aiResponseText", entry.aiResponseText)
+                put("aiSuggestedRoutineJson", entry.aiSuggestedRoutineJson)
+            }
+            journalArr.put(obj)
+        }
+        root.put("journalEntries", journalArr)
+
         return root.toString(2)
     }
 
-    fun parseFromJson(jsonString: String): Triple<PixelThemeType, List<RoutineEntity>, List<CheckInLogEntity>> {
+    fun parseFromJson(jsonString: String): ParsedBackupData {
         val root = JSONObject(jsonString)
+        val version = root.optInt("version", 1)
         val theme = PixelThemeType.fromId(root.optString("themeId", PixelThemeType.PASTEL_RETRO.id))
 
         val routines = mutableListOf<RoutineEntity>()
@@ -125,7 +160,43 @@ object BackupManager {
             )
         }
 
-        return Triple(theme, routines, logs)
+        val journalEntries = mutableListOf<JournalEntryEntity>()
+        val journalArr = root.optJSONArray("journalEntries")
+        if (journalArr != null) {
+            for (i in 0 until journalArr.length()) {
+                val obj = journalArr.getJSONObject(i)
+                val moodVal = if (obj.isNull("moodScore") || !obj.has("moodScore")) null else obj.optInt("moodScore")
+                val energyVal = if (obj.isNull("energyScore") || !obj.has("energyScore")) null else obj.optInt("energyScore")
+                val unlockVal = if (obj.isNull("unlockAtMillis") || !obj.has("unlockAtMillis")) null else obj.optLong("unlockAtMillis")
+                journalEntries.add(
+                    JournalEntryEntity(
+                        id = obj.optLong("id", 0L),
+                        dateKey = obj.optString("dateKey", DateUtils.todayDateKey()),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        entryTypeName = obj.optString("entryTypeName", JournalEntryType.MICRO_LOG.name),
+                        moodScore = moodVal,
+                        energyScore = energyVal,
+                        contextTagsCsv = obj.optString("contextTagsCsv", ""),
+                        content = obj.optString("content", ""),
+                        routineCompletionPercentSnapshot = obj.optInt("routineCompletionPercentSnapshot", 0),
+                        medalSnapshotName = obj.optString("medalSnapshotName", PixelMedalTier.NONE.name),
+                        pomodoroCyclesSnapshot = obj.optInt("pomodoroCyclesSnapshot", 0),
+                        unlockAtMillis = unlockVal,
+                        aiReactionModeName = obj.optString("aiReactionModeName", AiReactionMode.NONE.name),
+                        aiResponseText = obj.optString("aiResponseText", ""),
+                        aiSuggestedRoutineJson = obj.optString("aiSuggestedRoutineJson", "")
+                    )
+                )
+            }
+        }
+
+        return ParsedBackupData(
+            theme = theme,
+            routines = routines,
+            checkInLogs = logs,
+            journalEntries = journalEntries,
+            version = version
+        )
     }
 
     fun writeBackupToUri(context: Context, uri: Uri, jsonContent: String): Boolean {

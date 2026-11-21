@@ -9,11 +9,16 @@ import com.example.data.CheckInLogEntity
 import com.example.data.CheckInSource
 import com.example.data.CheckInStatus
 import com.example.data.DateUtils
+import com.example.data.JournalEntryEntity
+import com.example.data.JournalEntryType
 import com.example.data.RoutineCategory
 import com.example.data.RoutineEntity
+import com.example.data.UserPreferencesRepository
+import com.example.ui.RoutineViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ReminderBroadcastReceiver : BroadcastReceiver() {
@@ -73,6 +78,29 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                         }
                     }
 
+                    AlarmScheduler.ACTION_TRIGGER_DAILY_CHECKIN -> {
+                        NotificationHelper.showMoodStepNotification(
+                            context = appContext,
+                            notificationId = NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID,
+                            contextTitle = "Check-in do Fim do Dia",
+                            routineId = -1L,
+                            spriteName = "",
+                            isDailyEndOfDay = true,
+                            silentUpdate = false
+                        )
+                        if (!isTest) {
+                            val settings = UserPreferencesRepository(appContext).settingsFlow.first()
+                            if (settings.dailyCheckInNotifEnabled) {
+                                AlarmScheduler.scheduleDailyCheckInNotification(
+                                    context = appContext,
+                                    enabled = true,
+                                    hour = settings.dailyCheckInNotifHour,
+                                    minute = settings.dailyCheckInNotifMinute
+                                )
+                            }
+                        }
+                    }
+
                     AlarmScheduler.ACTION_OK_DONE -> {
                         AlarmRingingService.stopAlarm(appContext)
                         if (routineId > 0L) {
@@ -95,6 +123,109 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
                             val nextMillis = AlarmScheduler.scheduleRoutine(appContext, routine)
                             dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
                         }
+                    }
+
+                    AlarmScheduler.ACTION_OK_AND_MOOD -> {
+                        AlarmRingingService.stopAlarm(appContext)
+                        val now = System.currentTimeMillis()
+                        val resolvedTitle = routine?.title ?: fallbackTitle
+                        val resolvedIcon = routine?.sprite?.name ?: fallbackIcon
+                        val notifId = intent.getIntExtra(
+                            AlarmScheduler.EXTRA_NOTIFICATION_ID,
+                            if (routineId > 0L) NotificationHelper.notificationIdForRoutine(routineId)
+                            else NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID
+                        )
+
+                        dao.insertCheckIn(
+                            CheckInLogEntity(
+                                routineId = if (routineId > 0L) routineId else 0L,
+                                routineTitleSnapshot = resolvedTitle,
+                                categorySnapshot = routine?.categoryName ?: RoutineCategory.HIDRATACAO.name,
+                                dateKey = DateUtils.todayDateKey(now),
+                                timestamp = now,
+                                statusName = CheckInStatus.COMPLETED.name,
+                                sourceName = CheckInSource.NOTIFICATION_OK.name,
+                                note = "Confirmado via OK + Humor na notificação"
+                            )
+                        )
+                        if (routine != null && routine.isEnabled) {
+                            val nextMillis = AlarmScheduler.scheduleRoutine(appContext, routine)
+                            dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
+                        }
+
+                        // Silently morph the same notification into Step 1 (Mood selection)
+                        NotificationHelper.showMoodStepNotification(
+                            context = appContext,
+                            notificationId = notifId,
+                            contextTitle = resolvedTitle,
+                            routineId = routineId,
+                            spriteName = resolvedIcon,
+                            isDailyEndOfDay = false,
+                            silentUpdate = true
+                        )
+                    }
+
+                    AlarmScheduler.ACTION_NOTIF_PICK_MOOD -> {
+                        val notifId = intent.getIntExtra(
+                            AlarmScheduler.EXTRA_NOTIFICATION_ID,
+                            NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID
+                        )
+                        val moodScore = intent.getIntExtra(AlarmScheduler.EXTRA_MOOD_SCORE, 3).coerceIn(1, 5)
+                        val isDaily = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_DAILY_CHECKIN, true)
+
+                        // Silently morph the same notification into Step 2 (Energy selection)
+                        NotificationHelper.showEnergyStepNotification(
+                            context = appContext,
+                            notificationId = notifId,
+                            moodScore = moodScore,
+                            contextTitle = fallbackTitle,
+                            routineId = routineId,
+                            spriteName = fallbackIcon,
+                            isDailyEndOfDay = isDaily
+                        )
+                    }
+
+                    AlarmScheduler.ACTION_NOTIF_PICK_ENERGY -> {
+                        val notifId = intent.getIntExtra(
+                            AlarmScheduler.EXTRA_NOTIFICATION_ID,
+                            NotificationHelper.DAILY_CHECKIN_NOTIFICATION_ID
+                        )
+                        val moodScore = intent.getIntExtra(AlarmScheduler.EXTRA_MOOD_SCORE, 3).coerceIn(1, 5)
+                        val energyScore = intent.getIntExtra(AlarmScheduler.EXTRA_ENERGY_SCORE, 3).coerceIn(1, 5)
+                        val isDaily = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_DAILY_CHECKIN, true)
+
+                        NotificationHelper.cancelNotificationById(appContext, notifId)
+
+                        val now = System.currentTimeMillis()
+                        val todayKey = DateUtils.todayDateKey(now)
+                        val allRoutines = dao.getAllRoutinesOnce()
+                        val allLogs = dao.getAllCheckInsOnce()
+                        val streakSummary = RoutineViewModel.computeStreakMedalSummary(
+                            routines = allRoutines,
+                            logs = allLogs,
+                            todayKey = todayKey
+                        )
+
+                        val noteText = if (isDaily) {
+                            "Check-in do fim do dia via notificação"
+                        } else {
+                            "Check-in rápido após rotina: $fallbackTitle"
+                        }
+
+                        dao.insertJournalEntry(
+                            JournalEntryEntity(
+                                dateKey = todayKey,
+                                timestamp = now,
+                                entryTypeName = JournalEntryType.MOOD_CHECKIN.name,
+                                moodScore = moodScore,
+                                energyScore = energyScore,
+                                contextTagsCsv = "",
+                                content = noteText,
+                                routineCompletionPercentSnapshot = streakSummary.todayCompletionPercent,
+                                medalSnapshotName = streakSummary.todayMedal.name,
+                                pomodoroCyclesSnapshot = 0
+                            )
+                        )
                     }
 
                     AlarmScheduler.ACTION_DISMISS_ALARM -> {

@@ -2,9 +2,11 @@
     <string name="app_name">PixelRotina</string>
     <string name="tab_today">Hoje</string>
     <string name="tab_calendar">Calendário</string>
+    <string name="tab_journal">Diário</string>
     <string name="tab_report">Relatório</string>
     <string name="tab_settings">Ajustes</string>
     <string name="action_ok_done">OK! Feito</string>
+    <string name="action_ok_with_mood">OK + Humor</string>
     <string name="action_snooze_15">Adiar +15m</string>
     <string name="action_dismiss_alarm">Desligar e Concluir</string>
     <string name="action_snooze_alarm">Soneca 10 min</string>
@@ -14,4 +16,6 @@
     <string name="channel_scheduled_desc">Avisos pontuais da sua rotina diária e semanal</string>
     <string name="channel_alarm_name">Alarmes Persistentes</string>
     <string name="channel_alarm_desc">Alarmes que vibram e tocam continuamente até desligar</string>
+    <string name="channel_daily_checkin_name">Check-in Diário (Humor &amp; Energia)</string>
+    <string name="channel_daily_checkin_desc">Notificação configurável no fim do dia para registrar seu humor e energia</string>
 </resources>

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.alarm.AlarmRingingService
 import com.example.alarm.AlarmScheduler
 import com.example.alarm.NotificationHelper
+import com.example.data.AiReactionMode
 import com.example.data.AppDatabase
 import com.example.data.BackupManager
 import com.example.data.CalendarSyncHelper
@@ -17,6 +18,11 @@ import com.example.data.DateUtils
 import com.example.data.DeviceCalendarEvent
 import com.example.data.FrequencyType
 import com.example.data.HeroArtPreference
+import com.example.data.JournalAiAssistant
+import com.example.data.JournalCorrelationCalculator
+import com.example.data.JournalCorrelationSummary
+import com.example.data.JournalEntryEntity
+import com.example.data.JournalEntryType
 import com.example.data.RoutineCategory
 import com.example.data.RoutineEntity
 import com.example.data.RoutineRepository
@@ -33,15 +39,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.Locale
 
 enum class AppTab {
     TODAY,
     WEEKLY_CALENDAR,
+    JOURNAL,
     WEEKLY_REPORT,
     SETTINGS_BACKUP
 }
@@ -127,8 +136,23 @@ data class RoutineUiState(
     val todayDateKey: String = DateUtils.todayDateKey(),
     val streakMedalSummary: StreakMedalSummary = StreakMedalSummary(),
     val weeklyReport: WeeklyReportSummary = WeeklyReportSummary(),
-    val monthlyReport: MonthlyReportSummary = MonthlyReportSummary()
+    val monthlyReport: MonthlyReportSummary = MonthlyReportSummary(),
+    val journalEntries: List<JournalEntryEntity> = emptyList(),
+    val selectedJournalDateKey: String = DateUtils.todayDateKey(),
+    val todayLatestMood: Int? = null,
+    val todayLatestEnergy: Int? = null,
+    val todayAvgMood: Float? = null,
+    val todayAvgEnergy: Float? = null,
+    val todayMoodCheckInCount: Int = 0,
+    val pendingMoodPromptRoutine: RoutineEntity? = null,
+    val memory30DaysAgoEntry: JournalEntryEntity? = null,
+    val journalCorrelation: JournalCorrelationSummary = JournalCorrelationSummary(),
+    val isAiLoading: Boolean = false,
+    val aiLoadingEntryId: Long? = null
 ) {
+    val selectedDateJournalEntries: List<JournalEntryEntity>
+        get() = journalEntries.filter { it.dateKey == selectedJournalDateKey }
+
     val todayIsoDay: Int
         get() = DateUtils.currentIsoDayOfWeek()
 
@@ -188,6 +212,9 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     private val statusMessageFlow = MutableStateFlow<String?>(null)
     private val confettiTriggerFlow = MutableStateFlow(0)
     private val pomodoroStateFlow = MutableStateFlow(PomodoroState())
+    private val selectedJournalDateKeyFlow = MutableStateFlow(DateUtils.todayDateKey())
+    private val aiLoadingStateFlow = MutableStateFlow<Pair<Boolean, Long?>>(false to null)
+    private val pendingMoodPromptRoutineFlow = MutableStateFlow<RoutineEntity?>(null)
     private var pomodoroTickerJob: Job? = null
 
     val uiState: StateFlow<RoutineUiState> = combine(
@@ -202,20 +229,48 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             combine(
                 statusMessageFlow,
                 confettiTriggerFlow,
-                pomodoroStateFlow
-            ) { msg, confetti, pomodoro -> Triple(msg, confetti, pomodoro) }
-        ) { calState, editor, cal, msgConfettiPomodoro ->
+                pomodoroStateFlow,
+                pendingMoodPromptRoutineFlow
+            ) { msg, confetti, pomodoro, pendingPrompt ->
+                PromptAndStatusBundle(msg, confetti, pomodoro, pendingPrompt)
+            },
+            combine(
+                repository.allJournalEntries,
+                selectedJournalDateKeyFlow,
+                aiLoadingStateFlow
+            ) { entries, selectedJournalDate, aiLoading -> Triple(entries, selectedJournalDate, aiLoading) }
+        ) { calState, editor, cal, statusBundle, journalBundle ->
             ExtraUiBundle(
                 calState = calState,
                 editor = editor,
                 calendarEvents = cal,
-                statusMessage = msgConfettiPomodoro.first,
-                confettiTriggerId = msgConfettiPomodoro.second,
-                pomodoroState = msgConfettiPomodoro.third
+                statusMessage = statusBundle.statusMessage,
+                confettiTriggerId = statusBundle.confettiTriggerId,
+                pomodoroState = statusBundle.pomodoroState,
+                pendingMoodPromptRoutine = statusBundle.pendingMoodPromptRoutine,
+                journalEntries = journalBundle.first,
+                selectedJournalDateKey = journalBundle.second,
+                isAiLoading = journalBundle.third.first,
+                aiLoadingEntryId = journalBundle.third.second
             )
         }
     ) { routines, logs, settings, tab, extra ->
         val todayKey = DateUtils.todayDateKey()
+        val nowMillis = System.currentTimeMillis()
+        val entries = extra.journalEntries
+        val todayEntries = entries.filter { it.dateKey == todayKey }
+        val todayLatestMood = todayEntries.firstOrNull { it.moodScore != null }?.moodScore
+        val todayLatestEnergy = todayEntries.firstOrNull { it.energyScore != null }?.energyScore
+        val todayMoods = todayEntries.mapNotNull { it.moodScore }
+        val todayEnergies = todayEntries.mapNotNull { it.energyScore }
+        val todayAvgMood = if (todayMoods.isNotEmpty()) todayMoods.average().toFloat() else null
+        val todayAvgEnergy = if (todayEnergies.isNotEmpty()) todayEnergies.average().toFloat() else null
+        val todayMoodCount = todayEntries.count { it.moodScore != null || it.energyScore != null }
+        val date30DaysAgoKey = DateUtils.dateKeyForOffsetDays(-30, nowMillis)
+        val memory30DaysAgo = entries.firstOrNull {
+            it.dateKey == date30DaysAgoKey && !it.isTimeCapsuleLocked(nowMillis)
+        }
+
         RoutineUiState(
             routines = routines,
             checkInLogs = logs,
@@ -231,7 +286,24 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             todayDateKey = todayKey,
             streakMedalSummary = buildStreakMedalSummary(routines, logs, todayKey),
             weeklyReport = buildWeeklyReport(routines, logs),
-            monthlyReport = buildMonthlyReport(routines, logs)
+            monthlyReport = buildMonthlyReport(routines, logs),
+            journalEntries = entries,
+            selectedJournalDateKey = extra.selectedJournalDateKey,
+            todayLatestMood = todayLatestMood,
+            todayLatestEnergy = todayLatestEnergy,
+            todayAvgMood = todayAvgMood,
+            todayAvgEnergy = todayAvgEnergy,
+            todayMoodCheckInCount = todayMoodCount,
+            pendingMoodPromptRoutine = extra.pendingMoodPromptRoutine,
+            memory30DaysAgoEntry = memory30DaysAgo,
+            journalCorrelation = JournalCorrelationCalculator.buildCorrelationSummary(
+                routines = routines,
+                logs = logs,
+                journalEntries = entries,
+                todayKey = todayKey
+            ),
+            isAiLoading = extra.isAiLoading,
+            aiLoadingEntryId = extra.aiLoadingEntryId
         )
     }.stateIn(
         scope = viewModelScope,
@@ -242,6 +314,15 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     init {
         NotificationHelper.ensureChannelsCreated(appContext)
         refreshDeviceCalendarEvents()
+        viewModelScope.launch(Dispatchers.IO) {
+            val s = prefsRepo.settingsFlow.first()
+            AlarmScheduler.scheduleDailyCheckInNotification(
+                context = appContext,
+                enabled = s.dailyCheckInNotifEnabled,
+                hour = s.dailyCheckInNotifHour,
+                minute = s.dailyCheckInNotifMinute
+            )
+        }
     }
 
     fun selectTab(tab: AppTab) {
@@ -387,6 +468,82 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
                 "🎉 Boa! '${routine.title}' concluída!"
             }
             showStatus(celebrationMsg)
+            if (currentState.settings.promptMoodAfterRoutineCheckIn) {
+                pendingMoodPromptRoutineFlow.value = routine
+            }
+        }
+    }
+
+    fun dismissPostRoutineMoodPrompt() {
+        pendingMoodPromptRoutineFlow.value = null
+    }
+
+    fun savePostRoutineMoodEnergy(
+        routine: RoutineEntity,
+        moodScore: Int,
+        energyScore: Int
+    ) {
+        pendingMoodPromptRoutineFlow.value = null
+        saveJournalEntry(
+            entryType = JournalEntryType.MOOD_CHECKIN,
+            moodScore = moodScore,
+            energyScore = energyScore,
+            contextTags = emptyList(),
+            content = "Após rotina: ${routine.title}",
+            unlockAtMillis = null,
+            dateKey = uiState.value.todayDateKey
+        )
+    }
+
+    fun setDailyCheckInNotificationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setDailyCheckInNotifEnabled(enabled)
+            val s = prefsRepo.settingsFlow.first()
+            AlarmScheduler.scheduleDailyCheckInNotification(
+                context = appContext,
+                enabled = enabled,
+                hour = s.dailyCheckInNotifHour,
+                minute = s.dailyCheckInNotifMinute
+            )
+            val formattedTime = String.format(Locale.US, "%02d:%02d", s.dailyCheckInNotifHour, s.dailyCheckInNotifMinute)
+            showStatus(
+                if (enabled) "🌙 Check-in diário agendado para às $formattedTime!"
+                else "Notificação de check-in do fim do dia desativada."
+            )
+        }
+    }
+
+    fun setDailyCheckInNotificationTime(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            val safeHour = ((hour % 24) + 24) % 24
+            val safeMinute = ((minute % 60) + 60) % 60
+            prefsRepo.setDailyCheckInNotifTime(safeHour, safeMinute)
+            val s = prefsRepo.settingsFlow.first()
+            if (s.dailyCheckInNotifEnabled) {
+                AlarmScheduler.scheduleDailyCheckInNotification(
+                    context = appContext,
+                    enabled = true,
+                    hour = safeHour,
+                    minute = safeMinute
+                )
+            }
+            val formattedTime = String.format(Locale.US, "%02d:%02d", safeHour, safeMinute)
+            showStatus("🌙 Horário do check-in diário ajustado para $formattedTime!")
+        }
+    }
+
+    fun triggerTestDailyCheckInNotification() {
+        AlarmScheduler.triggerImmediateDailyCheckInTest(appContext)
+        showStatus("🌙 Notificação de Check-in enviada! Responda Humor e Energia direto pela barra.")
+    }
+
+    fun setPromptMoodAfterRoutineCheckIn(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setPromptMoodAfterRoutineCheckIn(enabled)
+            showStatus(
+                if (enabled) "✨ Pergunta rápida de Humor & Energia após concluir rotina ativada!"
+                else "Pergunta automática de Humor & Energia após rotina desativada."
+            )
         }
     }
 
@@ -472,6 +629,227 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun selectJournalDate(dateKey: String) {
+        selectedJournalDateKeyFlow.value = dateKey
+    }
+
+    fun shiftJournalDate(daysDelta: Int) {
+        val shifted = DateUtils.shiftDateKey(selectedJournalDateKeyFlow.value, daysDelta)
+        selectedJournalDateKeyFlow.value = shifted
+    }
+
+    fun saveJournalEntry(
+        entryType: JournalEntryType,
+        moodScore: Int?,
+        energyScore: Int?,
+        contextTags: List<String>,
+        content: String,
+        unlockAtMillis: Long? = null,
+        dateKey: String = uiState.value.selectedJournalDateKey
+    ) {
+        viewModelScope.launch {
+            val stateSnapshot = uiState.value
+            val todayKey = stateSnapshot.todayDateKey
+            val effectiveDateKey = dateKey.ifBlank { todayKey }
+            val isFirstMoodToday = moodScore != null &&
+                effectiveDateKey == todayKey &&
+                stateSnapshot.journalEntries.none { it.dateKey == todayKey && it.moodScore != null }
+
+            val cleanTagsCsv = contextTags
+                .map { it.trim().uppercase() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .joinToString(",")
+
+            val entry = JournalEntryEntity(
+                dateKey = effectiveDateKey,
+                timestamp = System.currentTimeMillis(),
+                entryTypeName = entryType.name,
+                moodScore = moodScore?.coerceIn(1, 5),
+                energyScore = energyScore?.coerceIn(1, 5),
+                contextTagsCsv = cleanTagsCsv,
+                content = content.trim(),
+                routineCompletionPercentSnapshot = stateSnapshot.streakMedalSummary.todayCompletionPercent,
+                medalSnapshotName = stateSnapshot.streakMedalSummary.todayMedal.name,
+                pomodoroCyclesSnapshot = stateSnapshot.pomodoroState.completedFocusCyclesToday,
+                unlockAtMillis = if (entryType == JournalEntryType.TIME_CAPSULE) unlockAtMillis else null
+            )
+
+            repository.insertJournalEntry(entry)
+
+            if (isFirstMoodToday) {
+                confettiTriggerFlow.value = confettiTriggerFlow.value + 1
+            }
+
+            val msg = when (entryType) {
+                JournalEntryType.MOOD_CHECKIN -> if (isFirstMoodToday) {
+                    "✨ Primeiro check-in de humor e energia do dia registrado!"
+                } else {
+                    "🔋 Humor e energia atualizados no seu diário!"
+                }
+                JournalEntryType.MICRO_LOG -> "📝 Micro-log salvo com sucesso no diário!"
+                JournalEntryType.REFLECTION -> "📖 Reflexão salva com sucesso no diário!"
+                JournalEntryType.TIME_CAPSULE -> {
+                    val unlockStr = unlockAtMillis?.let { DateUtils.formatDateNumericPt(it) } ?: "o futuro"
+                    "🔒 Cápsula do Tempo selada! Ela abrirá em $unlockStr."
+                }
+            }
+            showStatus(msg)
+        }
+    }
+
+    fun deleteJournalEntry(entry: JournalEntryEntity) {
+        viewModelScope.launch {
+            repository.deleteJournalEntry(entry)
+            showStatus("Registro removido do diário.")
+        }
+    }
+
+    fun toggleStealthMode() {
+        viewModelScope.launch {
+            val next = !uiState.value.settings.stealthModeEnabled
+            prefsRepo.setStealthModeEnabled(next)
+            showStatus(
+                if (next) "🔒 Modo Furtivo ativado: textos do diário ocultados."
+                else "🔓 Modo Furtivo desativado: textos visíveis."
+            )
+        }
+    }
+
+    fun setStealthMode(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setStealthModeEnabled(enabled)
+            showStatus(
+                if (enabled) "🔒 Modo Furtivo ativado: textos do diário ocultados."
+                else "🔓 Modo Furtivo desativado: textos visíveis."
+            )
+        }
+    }
+
+    fun updateJournalPin(pin: String) {
+        viewModelScope.launch {
+            val sanitized = pin.filter { it.isDigit() }.take(4)
+            prefsRepo.setJournalPin(sanitized)
+            if (sanitized.isEmpty()) {
+                showStatus("🔓 PIN do Diário removido.")
+            } else {
+                showStatus("🔐 PIN de 4 dígitos configurado para o Modo Furtivo!")
+            }
+        }
+    }
+
+    fun updateGeminiApiKey(apiKey: String) {
+        viewModelScope.launch {
+            val clean = apiKey.trim()
+            prefsRepo.setGeminiApiKey(clean)
+            if (clean.isEmpty()) {
+                showStatus("Chave Gemini removida. O app segue 100% offline.")
+            } else {
+                showStatus("✨ Chave Gemini salva localmente no aparelho!")
+            }
+        }
+    }
+
+    fun updateGeminiModelName(modelName: String) {
+        viewModelScope.launch {
+            val clean = modelName.trim().ifEmpty { JournalAiAssistant.DEFAULT_MODEL_NAME }
+            prefsRepo.setGeminiModelName(clean)
+            showStatus("🤖 Modelo Gemini selecionado: $clean")
+        }
+    }
+
+    fun requestAiReactionForEntry(entry: JournalEntryEntity, mode: AiReactionMode) {
+        if (aiLoadingStateFlow.value.first) return
+        val currentState = uiState.value
+        val apiKey = currentState.settings.geminiApiKey.trim()
+        if (apiKey.isEmpty()) {
+            showStatus("Configure sua chave Gemini em Ajustes para usar reações de IA.")
+            return
+        }
+        val modelName = currentState.settings.geminiModelName
+        val recentTitles = currentState.routines.filter { it.isEnabled }.map { it.title }
+
+        viewModelScope.launch {
+            aiLoadingStateFlow.value = true to entry.id
+            try {
+                val assistant = JournalAiAssistant(apiKey = apiKey, modelName = modelName)
+                val result = assistant.analyzeJournalEntry(
+                    entry = entry,
+                    mode = mode,
+                    recentRoutinesTitles = recentTitles
+                )
+                result.onSuccess { analysis ->
+                    val mergedTags = if (analysis.suggestedTags.isNotEmpty() && entry.contextTags.isEmpty()) {
+                        analysis.suggestedTags.joinToString(",")
+                    } else {
+                        entry.contextTagsCsv
+                    }
+                    val updated = entry.copy(
+                        contextTagsCsv = mergedTags,
+                        aiReactionModeName = mode.name,
+                        aiResponseText = analysis.responseText,
+                        aiSuggestedRoutineJson = analysis.suggestedRoutineJson
+                    )
+                    repository.insertJournalEntry(updated)
+                    showStatus("✨ Análise '${mode.labelPt}' concluída!")
+                }.onFailure {
+                    showStatus("Não foi possível consultar o Gemini agora. Verifique a internet ou sua chave.")
+                }
+            } finally {
+                aiLoadingStateFlow.value = false to null
+            }
+        }
+    }
+
+    fun requestWeeklyPatchNotes() {
+        if (aiLoadingStateFlow.value.first) return
+        val currentState = uiState.value
+        val apiKey = currentState.settings.geminiApiKey.trim()
+        if (apiKey.isEmpty()) {
+            showStatus("Configure sua chave Gemini em Ajustes para gerar os Patch Notes.")
+            return
+        }
+        val modelName = currentState.settings.geminiModelName
+        val todayKey = currentState.todayDateKey
+        val minKey = DateUtils.shiftDateKey(todayKey, -6)
+        val nowMillis = System.currentTimeMillis()
+        val recentEntries = currentState.journalEntries.filter {
+            it.dateKey >= minKey && it.dateKey <= todayKey && !it.isTimeCapsuleLocked(nowMillis)
+        }
+
+        viewModelScope.launch {
+            aiLoadingStateFlow.value = true to null
+            try {
+                val assistant = JournalAiAssistant(apiKey = apiKey, modelName = modelName)
+                val result = assistant.generateWeeklyPatchNotes(
+                    recentEntries = recentEntries,
+                    weeklyReport = currentState.weeklyReport,
+                    streakSummary = currentState.streakMedalSummary
+                )
+                result.onSuccess { patchNotes ->
+                    prefsRepo.saveCachedWeeklyPatchNotes(patchNotes, todayKey)
+                    showStatus("🎮 Patch Notes da Semana gerados com sucesso!")
+                }.onFailure {
+                    showStatus("Não foi possível gerar os Patch Notes agora. Verifique a conexão ou chave.")
+                }
+            } finally {
+                aiLoadingStateFlow.value = false to null
+            }
+        }
+    }
+
+    fun openSuggestedRoutineInEditor(suggestedJson: String): Boolean {
+        val draft = JournalAiAssistant.parseSuggestedRoutineJsonToEntity(suggestedJson)
+        return if (draft != null) {
+            editorStateFlow.value = true to draft
+            showStatus("✨ Rascunho de rotina pronto para revisão!")
+            true
+        } else {
+            showStatus("Não foi possível interpretar a sugestão de rotina.")
+            false
+        }
+    }
+
     fun exportBackupToUri(uri: Uri) {
         viewModelScope.launch {
             val json = withContext(Dispatchers.IO) {
@@ -501,7 +879,12 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
                 val res = withContext(Dispatchers.IO) {
                     repository.importFullBackupJson(json, replaceExisting)
                 }
-                showStatus("📂 Save restaurado: ${res.routinesImported} rotinas e ${res.logsImported} registros!")
+                val journalSuffix = if (res.journalEntriesImported > 0) {
+                    " e ${res.journalEntriesImported} notas do diário"
+                } else {
+                    ""
+                }
+                showStatus("📂 Save restaurado: ${res.routinesImported} rotinas, ${res.logsImported} check-ins$journalSuffix!")
             } catch (_: Exception) {
                 showStatus("Formato de arquivo JSON incompatível.")
             }
@@ -1007,11 +1390,23 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     }
 }
 
+private data class PromptAndStatusBundle(
+    val statusMessage: String?,
+    val confettiTriggerId: Int,
+    val pomodoroState: PomodoroState,
+    val pendingMoodPromptRoutine: RoutineEntity?
+)
+
 private data class ExtraUiBundle(
     val calState: CalendarMonthState,
     val editor: Pair<Boolean, RoutineEntity?>,
     val calendarEvents: List<DeviceCalendarEvent>,
     val statusMessage: String?,
     val confettiTriggerId: Int,
-    val pomodoroState: PomodoroState
+    val pomodoroState: PomodoroState,
+    val pendingMoodPromptRoutine: RoutineEntity? = null,
+    val journalEntries: List<JournalEntryEntity>,
+    val selectedJournalDateKey: String,
+    val isAiLoading: Boolean = false,
+    val aiLoadingEntryId: Long? = null
 )

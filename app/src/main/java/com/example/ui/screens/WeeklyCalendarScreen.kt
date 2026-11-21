@@ -40,16 +40,22 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.DateUtils
+import com.example.data.DayJournalSummary
 import com.example.data.DeviceCalendarEvent
+import com.example.data.JournalCorrelationCalculator
 import com.example.data.MonthCalendarCell
 import com.example.data.RoutineEntity
 import com.example.ui.RoutineUiState
 import com.example.ui.components.PixelBadge
 import com.example.ui.components.PixelButton
 import com.example.ui.components.PixelCard
+import com.example.ui.components.PixelEnergyIcon
+import com.example.ui.components.PixelMoodIcon
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
 import com.example.ui.theme.LocalPixelPalette
+import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun WeeklyCalendarScreen(
@@ -63,6 +69,7 @@ fun WeeklyCalendarScreen(
     onSyncRoutineToCalendar: (RoutineEntity) -> Unit,
     onEditRoutine: (RoutineEntity) -> Unit,
     onRefreshCalendar: () -> Unit,
+    onOpenJournalForDate: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val palette = LocalPixelPalette.current
@@ -76,12 +83,16 @@ fun WeeklyCalendarScreen(
     val eventsByDate = remember(uiState.calendarEvents) {
         uiState.calendarEvents.groupBy { it.dateKey }
     }
+    val journalSummaryByDate = remember(uiState.journalEntries) {
+        JournalCorrelationCalculator.computeDaySummaryByDate(uiState.journalEntries)
+    }
 
     val selectedDateKey = calState.selectedDateKey
     val selectedIsoDay = uiState.selectedIsoDay
     val selectedDayRoutines = uiState.routines.filter { selectedIsoDay in it.activeDays }
     val selectedDayEvents = eventsByDate[selectedDateKey].orEmpty()
     val selectedDayCompletedCount = completedByDate[selectedDateKey] ?: 0
+    val selectedDayJournal = journalSummaryByDate[selectedDateKey]
 
     LazyColumn(
         modifier = modifier
@@ -206,6 +217,7 @@ fun WeeklyCalendarScreen(
                                     val activeRoutinesCount = uiState.routines.count {
                                         it.isEnabled && cell.isoDayOfWeek in it.activeDays
                                     }
+                                    val cellJournal = journalSummaryByDate[cell.dateKey]
 
                                     MonthDayCellView(
                                         cell = cell,
@@ -213,6 +225,7 @@ fun WeeklyCalendarScreen(
                                         doneCount = doneCount,
                                         hasCalendarEvents = hasEvents,
                                         hasActiveRoutines = activeRoutinesCount > 0,
+                                        dayJournalSummary = cellJournal,
                                         onClick = { onSelectDateKey(cell.dateKey) },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -228,9 +241,9 @@ fun WeeklyCalendarScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        LegendDotItem(color = palette.wellnessGreen, label = "Check-in feito")
-                        LegendDotItem(color = palette.accent, label = "Evento Agenda")
-                        LegendDotItem(color = palette.secondary, label = "Rotina ativa")
+                        LegendDotItem(color = palette.wellnessGreen, label = "Check-in")
+                        LegendDotItem(color = palette.accent, label = "Agenda")
+                        LegendDotItem(color = palette.snoozeAmber, label = "Humor", isSquare = true)
                     }
                 }
             }
@@ -267,6 +280,15 @@ fun WeeklyCalendarScreen(
                     }
                 }
             }
+        }
+
+        // 2.5 Selected Day Mood, Energy & Journal Summary Card
+        item {
+            SelectedDayJournalSummaryCard(
+                dateKey = selectedDateKey,
+                summary = selectedDayJournal,
+                onOpenJournal = { onOpenJournalForDate(selectedDateKey) }
+            )
         }
 
         // 3. Native Android Calendar Integration Section for Selected Day
@@ -410,12 +432,127 @@ fun WeeklyCalendarScreen(
 }
 
 @Composable
+private fun SelectedDayJournalSummaryCard(
+    dateKey: String,
+    summary: DayJournalSummary?,
+    onOpenJournal: () -> Unit
+) {
+    val palette = LocalPixelPalette.current
+    PixelCard(
+        containerColor = palette.surfaceElevated,
+        modifier = Modifier.testTag("calendar_selected_day_journal_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "DIÁRIO & HUMOR DESTE DIA",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.primary
+                )
+                PixelBadge(
+                    text = "${summary?.entryCount ?: 0} REGISTROS",
+                    containerColor = palette.secondary,
+                    contentColor = palette.onSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (summary != null && (summary.avgMood != null || summary.avgEnergy != null || summary.entryCount > 0)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(palette.surface)
+                        .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val moodVal = summary.avgMood
+                        if (moodVal != null) {
+                            PixelMoodIcon(
+                                level = moodVal.roundToInt().coerceIn(1, 5),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "HUMOR MÉDIO",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary
+                            )
+                            Text(
+                                text = moodVal?.let { String.format(Locale.US, "%.1f / 5", it) } ?: "Sem nota",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val energyVal = summary.avgEnergy
+                        if (energyVal != null) {
+                            PixelEnergyIcon(
+                                level = energyVal.roundToInt().coerceIn(1, 5),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "ENERGIA MÉDIA",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary
+                            )
+                            Text(
+                                text = energyVal?.let { String.format(Locale.US, "%.1f / 5", it) } ?: "Sem nota",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = "Nenhum check-in de humor ou nota salva em ${DateUtils.formatFullDatePt(dateKey)}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.textSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            PixelButton(
+                text = "📖 VER NO DIÁRIO",
+                onClick = onOpenJournal,
+                containerColor = palette.primary,
+                contentColor = palette.onPrimary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("calendar_open_journal_button")
+            )
+        }
+    }
+}
+
+@Composable
 private fun MonthDayCellView(
     cell: MonthCalendarCell,
     isSelected: Boolean,
     doneCount: Int,
     hasCalendarEvents: Boolean,
     hasActiveRoutines: Boolean,
+    dayJournalSummary: DayJournalSummary?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -437,7 +574,16 @@ private fun MonthDayCellView(
         else -> palette.textSecondary.copy(alpha = 0.45f)
     }
 
-    Column(
+    val moodOrEnergy = dayJournalSummary?.avgMood ?: dayJournalSummary?.avgEnergy
+    val moodCornerColor = moodOrEnergy?.let { score ->
+        when {
+            score < 2.5f -> palette.alarmCoral
+            score < 3.8f -> palette.snoozeAmber
+            else -> palette.wellnessGreen
+        }
+    }
+
+    Box(
         modifier = modifier
             .defaultMinSize(minHeight = 46.dp)
             .clip(RoundedCornerShape(5.dp))
@@ -448,47 +594,65 @@ private fun MonthDayCellView(
                 shape = RoundedCornerShape(5.dp)
             )
             .clickable(onClick = onClick)
-            .padding(vertical = 5.dp, horizontal = 2.dp)
-            .testTag("month_cell_${cell.dateKey}"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .testTag("month_cell_${cell.dateKey}")
     ) {
-        Text(
-            text = "${cell.dayOfMonth}",
-            style = MaterialTheme.typography.labelLarge,
-            color = textColor
-        )
-        Spacer(modifier = Modifier.height(3.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Discrete pixel art corner indicator for daily mood/energy without overlapping routine/event dots
+        if (moodCornerColor != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 3.dp, end = 3.dp)
+                    .size(5.dp)
+                    .background(moodCornerColor, RoundedCornerShape(1.dp))
+                    .border(0.75.dp, palette.pixelBorder, RoundedCornerShape(1.dp))
+                    .testTag("month_cell_mood_dot_${cell.dateKey}")
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 5.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            if (doneCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (isSelected) palette.onPrimary else palette.wellnessGreen)
-                )
-            }
-            if (hasCalendarEvents) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (isSelected) palette.onPrimary else palette.accent)
-                )
-            }
-            if (doneCount == 0 && !hasCalendarEvents && hasActiveRoutines && cell.isCurrentMonth) {
-                Box(
-                    modifier = Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isSelected) palette.onPrimary.copy(alpha = 0.7f)
-                            else palette.secondary.copy(alpha = 0.7f)
-                        )
-                )
+            Text(
+                text = "${cell.dayOfMonth}",
+                style = MaterialTheme.typography.labelLarge,
+                color = textColor
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (doneCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSelected) palette.onPrimary else palette.wellnessGreen)
+                    )
+                }
+                if (hasCalendarEvents) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSelected) palette.onPrimary else palette.accent)
+                    )
+                }
+                if (doneCount == 0 && !hasCalendarEvents && hasActiveRoutines && cell.isCurrentMonth) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) palette.onPrimary.copy(alpha = 0.7f)
+                                else palette.secondary.copy(alpha = 0.7f)
+                            )
+                    )
+                }
             }
         }
     }
@@ -497,14 +661,15 @@ private fun MonthDayCellView(
 @Composable
 private fun LegendDotItem(
     color: androidx.compose.ui.graphics.Color,
-    label: String
+    label: String,
+    isSquare: Boolean = false
 ) {
     val palette = LocalPixelPalette.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(8.dp)
-                .clip(CircleShape)
+                .clip(if (isSquare) RoundedCornerShape(1.5.dp) else CircleShape)
                 .background(color)
         )
         Spacer(modifier = Modifier.width(5.dp))

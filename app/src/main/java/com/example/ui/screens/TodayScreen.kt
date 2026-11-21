@@ -15,6 +15,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +40,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +61,7 @@ import com.example.data.AmbientSceneEffect
 import com.example.data.DateUtils
 import com.example.data.FrequencyType
 import com.example.data.HeroArtPreference
+import com.example.data.JournalContextTag
 import com.example.data.RoutineEntity
 import com.example.ui.RoutineUiState
 import com.example.ui.StreakMedalSummary
@@ -64,15 +69,21 @@ import com.example.ui.components.PixelBadge
 import com.example.ui.components.PixelBlockProgressBar
 import com.example.ui.components.PixelButton
 import com.example.ui.components.PixelCard
+import com.example.ui.components.PixelEnergyIcon
 import com.example.ui.components.PixelMedalIcon
 import com.example.ui.components.PixelMedalTier
+import com.example.ui.components.PixelMoodIcon
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
 import com.example.ui.components.PixelStreakFlameIcon
 import com.example.ui.components.PomodoroEmbeddedCard
 import com.example.ui.components.PomodoroPhase
+import com.example.ui.components.energyLabelPt
+import com.example.ui.components.moodLabelPt
 import com.example.ui.theme.LocalPixelPalette
+import androidx.compose.ui.window.Dialog
 import java.util.Calendar
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -94,6 +105,10 @@ fun TodayScreen(
     onLinkRoutineToPomodoro: (RoutineEntity?, Boolean) -> Unit = { _, _ -> },
     onDismissPomodoroAlert: () -> Unit = {},
     onCompleteLinkedRoutineFromPomodoroAlert: (Long) -> Unit = {},
+    onSaveQuickMoodEnergy: (moodScore: Int, energyScore: Int, contextTags: List<String>) -> Unit = { _, _, _ -> },
+    onSavePostRoutineMoodEnergy: (routine: RoutineEntity, moodScore: Int, energyScore: Int) -> Unit = { _, _, _ -> },
+    onDismissPostRoutineMoodPrompt: () -> Unit = {},
+    onOpenJournalTab: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val palette = LocalPixelPalette.current
@@ -217,6 +232,19 @@ fun TodayScreen(
                     }
                 }
             }
+        }
+
+        // 1.25 Quick 2-Tap Mood & Energy Check-in Card (with live daily average)
+        item {
+            QuickMoodEnergyCheckInCard(
+                todayLatestMood = uiState.todayLatestMood,
+                todayLatestEnergy = uiState.todayLatestEnergy,
+                todayAvgMood = uiState.todayAvgMood,
+                todayAvgEnergy = uiState.todayAvgEnergy,
+                todayCheckInCount = uiState.todayMoodCheckInCount,
+                onSaveQuickCheckIn = onSaveQuickMoodEnergy,
+                onOpenJournalTab = onOpenJournalTab
+            )
         }
 
         // 1.5 Embedded Pixel Art Pomodoro Focus Timer & End-of-Interval Visual Reminder
@@ -415,6 +443,18 @@ fun TodayScreen(
         item {
             Spacer(modifier = Modifier.height(72.dp))
         }
+    }
+
+    uiState.pendingMoodPromptRoutine?.let { completedRoutine ->
+        PostRoutineMoodEnergyDialog(
+            routine = completedRoutine,
+            initialMood = uiState.todayLatestMood ?: 4,
+            initialEnergy = uiState.todayLatestEnergy ?: 4,
+            onSave = { mood, energy ->
+                onSavePostRoutineMoodEnergy(completedRoutine, mood, energy)
+            },
+            onSkip = onDismissPostRoutineMoodPrompt
+        )
     }
 }
 
@@ -998,3 +1038,474 @@ private fun DailyStreakMedalSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickMoodEnergyCheckInCard(
+    todayLatestMood: Int?,
+    todayLatestEnergy: Int?,
+    todayAvgMood: Float?,
+    todayAvgEnergy: Float?,
+    todayCheckInCount: Int,
+    onSaveQuickCheckIn: (moodScore: Int, energyScore: Int, contextTags: List<String>) -> Unit,
+    onOpenJournalTab: () -> Unit
+) {
+    val palette = LocalPixelPalette.current
+    val hasRecordedToday = todayLatestMood != null && todayLatestEnergy != null
+    var isEditing by rememberSaveable { mutableStateOf(false) }
+    var selectedMood by rememberSaveable(todayLatestMood) { mutableIntStateOf(todayLatestMood ?: 4) }
+    var selectedEnergy by rememberSaveable(todayLatestEnergy) { mutableIntStateOf(todayLatestEnergy ?: 4) }
+    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    PixelCard(
+        containerColor = palette.surfaceElevated,
+        modifier = Modifier.testTag("today_quick_mood_energy_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "CHECK-IN DE ENERGIA & HUMOR",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = palette.primary
+                )
+                PixelBadge(
+                    text = if (hasRecordedToday) {
+                        if (todayCheckInCount > 1) "${todayCheckInCount}x HOJE" else "✓ REGISTRADO"
+                    } else {
+                        "2 TOQUES"
+                    },
+                    containerColor = if (hasRecordedToday) palette.wellnessGreen else palette.secondary,
+                    contentColor = if (hasRecordedToday) palette.onPrimary else palette.onSecondary
+                )
+            }
+
+            if (hasRecordedToday && !isEditing) {
+                val displayMoodAvg = todayAvgMood ?: todayLatestMood!!.toFloat()
+                val displayEnergyAvg = todayAvgEnergy ?: todayLatestEnergy!!.toFloat()
+                val avgMoodFormatted = String.format(Locale.US, "%.1f", displayMoodAvg)
+                val avgEnergyFormatted = String.format(Locale.US, "%.1f", displayEnergyAvg)
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(palette.surface)
+                        .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PixelMoodIcon(
+                            level = displayMoodAvg.roundToInt().coerceIn(1, 5),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (todayCheckInCount > 1) "MÉDIA HUMOR" else "HUMOR HOJE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary
+                            )
+                            Text(
+                                text = "$avgMoodFormatted/5 • ${moodLabelPt(displayMoodAvg.roundToInt().coerceIn(1, 5))}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PixelEnergyIcon(
+                            level = displayEnergyAvg.roundToInt().coerceIn(1, 5),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (todayCheckInCount > 1) "MÉDIA ENERGIA" else "ENERGIA HOJE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary
+                            )
+                            Text(
+                                text = "$avgEnergyFormatted/5 • ${energyLabelPt(displayEnergyAvg.roundToInt().coerceIn(1, 5))}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PixelButton(
+                        text = "+ REGISTRAR",
+                        onClick = { isEditing = true },
+                        containerColor = palette.surface,
+                        contentColor = palette.textPrimary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("today_mood_update_button")
+                    )
+                    PixelButton(
+                        text = "ABRIR DIÁRIO",
+                        onClick = onOpenJournalTab,
+                        containerColor = palette.primary,
+                        contentColor = palette.onPrimary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("today_open_journal_button")
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "HUMOR AGORA",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textSecondary
+                    )
+                    Text(
+                        text = moodLabelPt(selectedMood),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    (1..5).forEach { level ->
+                        val chosen = selectedMood == level
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (chosen) palette.primary.copy(alpha = 0.2f) else palette.surface
+                                )
+                                .border(
+                                    width = if (chosen) 2.5.dp else 1.5.dp,
+                                    color = if (chosen) palette.primary else palette.pixelBorder,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { selectedMood = level }
+                                .testTag("today_quick_mood_$level"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PixelMoodIcon(
+                                level = level,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "BATERIA / ENERGIA",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textSecondary
+                    )
+                    Text(
+                        text = "${energyLabelPt(selectedEnergy)} ($selectedEnergy/5)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.wellnessGreen
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    (1..5).forEach { level ->
+                        val chosen = selectedEnergy == level
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (chosen) palette.wellnessGreen.copy(alpha = 0.2f) else palette.surface
+                                )
+                                .border(
+                                    width = if (chosen) 2.5.dp else 1.5.dp,
+                                    color = if (chosen) palette.wellnessGreen else palette.pixelBorder,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { selectedEnergy = level }
+                                .testTag("today_quick_energy_$level"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PixelEnergyIcon(
+                                level = level,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    JournalContextTag.entries.forEach { tag ->
+                        val isChosen = tag.code in selectedTags
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(if (isChosen) palette.secondary else palette.surface)
+                                .border(1.5.dp, palette.pixelBorder, RoundedCornerShape(5.dp))
+                                .clickable {
+                                    selectedTags = if (isChosen) {
+                                        selectedTags - tag.code
+                                    } else {
+                                        selectedTags + tag.code
+                                    }
+                                }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                                .testTag("today_quick_tag_${tag.code.lowercase()}")
+                        ) {
+                            Text(
+                                text = if (isChosen) "✓ ${tag.labelPt}" else tag.labelPt,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isChosen) palette.onSecondary else palette.textPrimary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PixelButton(
+                        text = "SALVAR CHECK-IN",
+                        onClick = {
+                            onSaveQuickCheckIn(selectedMood, selectedEnergy, selectedTags.toList())
+                            selectedTags = emptySet()
+                            isEditing = false
+                        },
+                        containerColor = palette.wellnessGreen,
+                        contentColor = palette.onPrimary,
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .testTag("today_save_quick_checkin_button")
+                    )
+                    if (isEditing) {
+                        PixelButton(
+                            text = "FECHAR",
+                            onClick = { isEditing = false },
+                            containerColor = palette.surface,
+                            contentColor = palette.textPrimary,
+                            modifier = Modifier.weight(0.7f)
+                        )
+                    } else {
+                        PixelButton(
+                            text = "DIÁRIO",
+                            onClick = onOpenJournalTab,
+                            containerColor = palette.surface,
+                            contentColor = palette.textPrimary,
+                            modifier = Modifier
+                                .weight(0.7f)
+                                .testTag("today_open_journal_secondary_button")
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostRoutineMoodEnergyDialog(
+    routine: RoutineEntity,
+    initialMood: Int,
+    initialEnergy: Int,
+    onSave: (moodScore: Int, energyScore: Int) -> Unit,
+    onSkip: () -> Unit
+) {
+    val palette = LocalPixelPalette.current
+    var selectedMood by remember(routine.id) { mutableIntStateOf(initialMood.coerceIn(1, 5)) }
+    var selectedEnergy by remember(routine.id) { mutableIntStateOf(initialEnergy.coerceIn(1, 5)) }
+
+    Dialog(onDismissRequest = onSkip) {
+        PixelCard(
+            containerColor = palette.surfaceElevated,
+            borderColor = palette.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("post_routine_mood_dialog")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(palette.wellnessGreen.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .border(2.dp, palette.pixelBorder, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PixelSpriteIcon(
+                            spriteType = routine.sprite,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "✓ ${routine.title}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = palette.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Como você está agora? (Opcional — atualiza sua média diária)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "HUMOR AGORA",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textSecondary
+                    )
+                    Text(
+                        text = moodLabelPt(selectedMood),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    (1..5).forEach { level ->
+                        val chosen = selectedMood == level
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (chosen) palette.primary.copy(alpha = 0.22f) else palette.surface)
+                                .border(
+                                    width = if (chosen) 2.5.dp else 1.5.dp,
+                                    color = if (chosen) palette.primary else palette.pixelBorder,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { selectedMood = level }
+                                .testTag("post_routine_mood_$level"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PixelMoodIcon(level = level, modifier = Modifier.size(26.dp))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "ENERGIA AGORA",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textSecondary
+                    )
+                    Text(
+                        text = "${energyLabelPt(selectedEnergy)} ($selectedEnergy/5)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.wellnessGreen
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    (1..5).forEach { level ->
+                        val chosen = selectedEnergy == level
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (chosen) palette.wellnessGreen.copy(alpha = 0.22f) else palette.surface)
+                                .border(
+                                    width = if (chosen) 2.5.dp else 1.5.dp,
+                                    color = if (chosen) palette.wellnessGreen else palette.pixelBorder,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { selectedEnergy = level }
+                                .testTag("post_routine_energy_$level"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PixelEnergyIcon(level = level, modifier = Modifier.size(26.dp))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PixelButton(
+                        text = "PULAR",
+                        onClick = onSkip,
+                        containerColor = palette.surface,
+                        contentColor = palette.textPrimary,
+                        modifier = Modifier
+                            .weight(0.75f)
+                            .testTag("post_routine_mood_skip")
+                    )
+                    PixelButton(
+                        text = "✨ SALVAR NA MÉDIA",
+                        onClick = { onSave(selectedMood, selectedEnergy) },
+                        containerColor = palette.wellnessGreen,
+                        contentColor = palette.onPrimary,
+                        modifier = Modifier
+                            .weight(1.25f)
+                            .testTag("post_routine_mood_save")
+                    )
+                }
+            }
+        }
+    }
+}

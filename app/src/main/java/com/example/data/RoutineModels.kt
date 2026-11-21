@@ -1,7 +1,9 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.example.ui.components.PixelMedalTier
 import com.example.ui.components.PixelSpriteType
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -170,6 +172,90 @@ data class CheckInLogEntity(
             ?: CheckInSource.IN_APP
 }
 
+enum class JournalEntryType(
+    val labelPt: String,
+    val badgeLabelPt: String
+) {
+    MOOD_CHECKIN("Check-in de Humor", "CHECK-IN"),
+    MICRO_LOG("Micro-log", "MICRO-LOG"),
+    REFLECTION("Reflexão", "REFLEXÃO"),
+    TIME_CAPSULE("Cápsula do Tempo", "CÁPSULA")
+}
+
+enum class JournalContextTag(
+    val code: String,
+    val labelPt: String
+) {
+    SONO_RUIM("SONO_RUIM", "Sono ruim"),
+    TREINO("TREINO", "Treino"),
+    FOCO("FOCO", "Foco"),
+    ESTUDO("ESTUDO", "Estudo"),
+    SOCIAL("SOCIAL", "Social"),
+    SOBRECARGA("SOBRECARGA", "Sobrecarga"),
+    CAFE("CAFE", "Café");
+
+    companion object {
+        fun labelForCode(code: String): String {
+            return entries.firstOrNull { it.code == code.trim().uppercase() }?.labelPt
+                ?: code.trim().replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+        }
+    }
+}
+
+enum class AiReactionMode(
+    val labelPt: String,
+    val buttonLabelPt: String
+) {
+    NONE("Nenhuma", "Nenhuma"),
+    VALIDATE_SUMMARY("Resumo Empático", "Resumir"),
+    SOCRATIC_QUESTIONS("2 Perguntas", "2 Perguntas"),
+    ACTIONABLE_STEPS("Plano de Ação", "Extrair Ação")
+}
+
+@Entity(
+    tableName = "journal_entries",
+    indices = [Index(value = ["dateKey"])]
+)
+data class JournalEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val dateKey: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val entryTypeName: String = JournalEntryType.MICRO_LOG.name,
+    val moodScore: Int? = null,
+    val energyScore: Int? = null,
+    val contextTagsCsv: String = "",
+    val content: String = "",
+    val routineCompletionPercentSnapshot: Int = 0,
+    val medalSnapshotName: String = PixelMedalTier.NONE.name,
+    val pomodoroCyclesSnapshot: Int = 0,
+    val unlockAtMillis: Long? = null,
+    val aiReactionModeName: String = AiReactionMode.NONE.name,
+    val aiResponseText: String = "",
+    val aiSuggestedRoutineJson: String = ""
+) {
+    val entryType: JournalEntryType
+        get() = JournalEntryType.entries.firstOrNull { it.name == entryTypeName }
+            ?: JournalEntryType.MICRO_LOG
+
+    val contextTags: List<String>
+        get() = contextTagsCsv.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    val medalSnapshot: PixelMedalTier
+        get() = PixelMedalTier.entries.firstOrNull { it.name == medalSnapshotName }
+            ?: PixelMedalTier.NONE
+
+    val aiReactionMode: AiReactionMode
+        get() = AiReactionMode.entries.firstOrNull { it.name == aiReactionModeName }
+            ?: AiReactionMode.NONE
+
+    fun isTimeCapsuleLocked(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        val unlockAt = unlockAtMillis ?: return false
+        return entryType == JournalEntryType.TIME_CAPSULE && unlockAt > nowMillis
+    }
+}
+
 data class MonthCalendarCell(
     val dateKey: String,
     val dayOfMonth: Int,
@@ -195,6 +281,25 @@ object DateUtils {
         }
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         return sdf.format(cal.time)
+    }
+
+    fun shiftDateKey(dateKey: String, daysDelta: Int): String {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val parsed = sdf.parse(dateKey) ?: return todayDateKey()
+            val cal = Calendar.getInstance().apply {
+                time = parsed
+                add(Calendar.DAY_OF_YEAR, daysDelta)
+            }
+            sdf.format(cal.time)
+        } catch (_: Exception) {
+            todayDateKey()
+        }
+    }
+
+    fun formatDateNumericPt(millis: Long): String {
+        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        return sdf.format(Date(millis))
     }
 
     /**

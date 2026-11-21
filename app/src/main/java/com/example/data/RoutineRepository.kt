@@ -12,6 +12,7 @@ class RoutineRepository(
 ) {
     val allRoutines: Flow<List<RoutineEntity>> = routineDao.observeAllRoutines()
     val allCheckIns: Flow<List<CheckInLogEntity>> = routineDao.observeAllCheckIns()
+    val allJournalEntries: Flow<List<JournalEntryEntity>> = routineDao.observeAllJournalEntries()
     val userSettings: Flow<UserSettings> = preferencesRepository.settingsFlow
 
     suspend fun clearAllUserData() {
@@ -21,6 +22,15 @@ class RoutineRepository(
         }
         routineDao.clearAllRoutines()
         routineDao.clearAllCheckIns()
+        routineDao.clearAllJournalEntries()
+    }
+
+    suspend fun insertJournalEntry(entry: JournalEntryEntity): Long {
+        return routineDao.insertJournalEntry(entry)
+    }
+
+    suspend fun deleteJournalEntry(entry: JournalEntryEntity) {
+        routineDao.deleteJournalEntry(entry)
     }
 
     suspend fun saveRoutine(routine: RoutineEntity): RoutineEntity {
@@ -115,14 +125,20 @@ class RoutineRepository(
     suspend fun exportFullBackupJson(currentTheme: com.example.ui.theme.PixelThemeType): String {
         val routines = routineDao.getAllRoutinesOnce()
         val logs = routineDao.getAllCheckInsOnce()
-        val json = BackupManager.serializeToJson(currentTheme, routines, logs)
+        val journalEntries = routineDao.getAllJournalEntriesOnce()
+        val json = BackupManager.serializeToJson(currentTheme, routines, logs, journalEntries)
         BackupManager.saveInternalQuickCopy(context, json)
         preferencesRepository.recordBackupTimestamp()
         return json
     }
 
     suspend fun importFullBackupJson(jsonString: String, replaceExisting: Boolean): BackupRestoreResult {
-        val (theme, importedRoutines, importedLogs) = BackupManager.parseFromJson(jsonString)
+        val parsed = BackupManager.parseFromJson(jsonString)
+        val theme = parsed.theme
+        val importedRoutines = parsed.routines
+        val importedLogs = parsed.checkInLogs
+        val importedJournal = parsed.journalEntries
+
         if (replaceExisting) {
             val currentRoutines = routineDao.getAllRoutinesOnce()
             for (r in currentRoutines) {
@@ -149,13 +165,24 @@ class RoutineRepository(
             routineDao.insertCheckIn(toInsert)
         }
 
+        if (replaceExisting) {
+            if (parsed.version >= 2 || importedJournal.isNotEmpty()) {
+                routineDao.replaceAllJournalEntries(importedJournal)
+            }
+        } else {
+            for (entry in importedJournal) {
+                routineDao.insertJournalEntry(entry.copy(id = 0L))
+            }
+        }
+
         preferencesRepository.setTheme(theme)
         preferencesRepository.recordBackupTimestamp()
 
         return BackupRestoreResult(
             routinesImported = importedRoutines.size,
             logsImported = importedLogs.size,
-            themeRestored = theme
+            themeRestored = theme,
+            journalEntriesImported = importedJournal.size
         )
     }
 }

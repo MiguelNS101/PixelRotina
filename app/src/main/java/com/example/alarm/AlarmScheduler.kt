@@ -14,7 +14,11 @@ import java.util.Calendar
 object AlarmScheduler {
 
     const val ACTION_TRIGGER_REMINDER = "com.example.action.TRIGGER_REMINDER"
+    const val ACTION_TRIGGER_DAILY_CHECKIN = "com.example.action.TRIGGER_DAILY_CHECKIN"
     const val ACTION_OK_DONE = "com.example.action.ACTION_OK_DONE"
+    const val ACTION_OK_AND_MOOD = "com.example.action.ACTION_OK_AND_MOOD"
+    const val ACTION_NOTIF_PICK_MOOD = "com.example.action.ACTION_NOTIF_PICK_MOOD"
+    const val ACTION_NOTIF_PICK_ENERGY = "com.example.action.ACTION_NOTIF_PICK_ENERGY"
     const val ACTION_SNOOZE = "com.example.action.ACTION_SNOOZE"
     const val ACTION_DISMISS_ALARM = "com.example.action.ACTION_DISMISS_ALARM"
 
@@ -25,6 +29,13 @@ object AlarmScheduler {
     const val EXTRA_ALERT_MODE = "extra_alert_mode"
     const val EXTRA_SNOOZE_MINUTES = "extra_snooze_minutes"
     const val EXTRA_IS_TEST = "extra_is_test"
+    const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+    const val EXTRA_MOOD_SCORE = "extra_mood_score"
+    const val EXTRA_ENERGY_SCORE = "extra_energy_score"
+    const val EXTRA_IS_DAILY_CHECKIN = "extra_is_daily_checkin"
+    const val EXTRA_OPEN_TAB = "extra_open_tab"
+
+    const val DAILY_CHECKIN_REQUEST_CODE = 98_701
 
     fun canScheduleExactAlarms(context: Context): Boolean {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
@@ -248,6 +259,83 @@ object AlarmScheduler {
             } catch (_: Exception) {
             }
         }
+    }
+
+    fun computeNextDailyCheckInTriggerMillis(
+        hour: Int,
+        minute: Int,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Long {
+        val safeHour = hour.coerceIn(0, 23)
+        val safeMinute = minute.coerceIn(0, 59)
+        return computeNextSpecificTime(
+            hour = safeHour,
+            minute = safeMinute,
+            activeDays = setOf(1, 2, 3, 4, 5, 6, 7),
+            nowMillis = nowMillis
+        )
+    }
+
+    fun scheduleDailyCheckInNotification(
+        context: Context,
+        enabled: Boolean,
+        hour: Int,
+        minute: Int
+    ): Long {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return 0L
+        if (!enabled) {
+            cancelDailyCheckInNotification(context)
+            return 0L
+        }
+        val triggerAtMillis = computeNextDailyCheckInTriggerMillis(hour, minute)
+        val pendingIntent = buildDailyCheckInPendingIntent(context)
+        try {
+            if (canScheduleExactAlarms(context)) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        } catch (_: SecurityException) {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
+        return triggerAtMillis
+    }
+
+    fun cancelDailyCheckInNotification(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.cancel(buildDailyCheckInPendingIntent(context))
+    }
+
+    fun triggerImmediateDailyCheckInTest(context: Context) {
+        val intent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
+            action = ACTION_TRIGGER_DAILY_CHECKIN
+            putExtra(EXTRA_IS_TEST, true)
+        }
+        context.sendBroadcast(intent)
+    }
+
+    private fun buildDailyCheckInPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, ReminderBroadcastReceiver::class.java).apply {
+            action = ACTION_TRIGGER_DAILY_CHECKIN
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            DAILY_CHECKIN_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun buildTriggerPendingIntent(context: Context, routine: RoutineEntity): PendingIntent {

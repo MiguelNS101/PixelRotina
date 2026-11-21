@@ -952,3 +952,303 @@ fun PixelStreakFlameIcon(
     }
 }
 
+fun moodLabelPt(level: Int): String = when (level.coerceIn(1, 5)) {
+    1 -> "Esgotado"
+    2 -> "Baixo"
+    3 -> "Estável"
+    4 -> "Bem"
+    else -> "Radiante"
+}
+
+fun energyLabelPt(level: Int): String = when (level.coerceIn(1, 5)) {
+    1 -> "Crítica"
+    2 -> "Baixa"
+    3 -> "Média"
+    4 -> "Alta"
+    else -> "Máxima"
+}
+
+/**
+ * 8x8 Pixel Art Mood Face Icon (levels 1 to 5).
+ */
+@Composable
+fun PixelMoodIcon(
+    level: Int,
+    modifier: Modifier = Modifier.size(28.dp),
+    tintOverride: Color? = null,
+    description: String = "Humor: ${moodLabelPt(level)}"
+) {
+    val palette = LocalPixelPalette.current
+    val clamped = level.coerceIn(1, 5)
+    val mainColor = tintOverride ?: when (clamped) {
+        1 -> palette.alarmCoral
+        2 -> palette.snoozeAmber
+        3 -> palette.waterCyan
+        4 -> palette.secondary
+        else -> palette.wellnessGreen
+    }
+    val outlineColor = palette.pixelBorder
+    val featureColor = Color(0xFF1A1B26)
+    val highlightColor = Color.White.copy(alpha = 0.88f)
+
+    // 8x8 grid: 'B' = border, '1' = face fill, '2' = eyes/mouth, 'H' = highlight
+    val grid = when (clamped) {
+        1 -> listOf(
+            "..BBBB..",
+            ".B1111B.",
+            "B121121B",
+            "B111111B",
+            "B112211B",
+            "B121121B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        2 -> listOf(
+            "..BBBB..",
+            ".B1111B.",
+            "B121121B",
+            "B111111B",
+            "B112211B",
+            "B121111B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        3 -> listOf(
+            "..BBBB..",
+            ".BH111B.",
+            "B121121B",
+            "B111111B",
+            "B122221B",
+            "B111111B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        4 -> listOf(
+            "..BBBB..",
+            ".BH111B.",
+            "B121121B",
+            "B111111B",
+            "B121121B",
+            "B112211B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+        else -> listOf(
+            "..BBBB..",
+            ".BHH11B.",
+            "B121121B",
+            "BH1111HB",
+            "B122221B",
+            "B112211B",
+            ".B1111B.",
+            "..BBBB.."
+        )
+    }
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 8f
+        val cellH = size.height / 8f
+        grid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    'B' -> outlineColor
+                    '1' -> mainColor
+                    '2' -> featureColor
+                    'H' -> highlightColor
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 8x8 Pixel Art Energy Battery Icon filling from 1 bar (alert red) to 5 bars (full green).
+ */
+@Composable
+fun PixelEnergyIcon(
+    level: Int,
+    modifier: Modifier = Modifier.size(28.dp),
+    tintOverride: Color? = null,
+    description: String = "Energia: ${energyLabelPt(level)} ($level de 5)"
+) {
+    val palette = LocalPixelPalette.current
+    val clamped = level.coerceIn(1, 5)
+    val barColor = tintOverride ?: when (clamped) {
+        1 -> palette.alarmCoral
+        2 -> Color(0xFFF97316)
+        3 -> palette.snoozeAmber
+        4 -> palette.secondary
+        else -> palette.wellnessGreen
+    }
+    val emptySlotColor = palette.pixelBorder.copy(alpha = 0.16f)
+    val highlightColor = Color.White.copy(alpha = 0.72f)
+    val outlineColor = palette.pixelBorder
+
+    // 8x8 vertical battery: row 6 = bar 1 (bottom) .. row 2 = bar 5 (top)
+    val grid = listOf(
+        "..BBBB..",
+        ".BBBBBB.",
+        ".B5555B.",
+        ".B4444B.",
+        ".B3333B.",
+        ".B2222B.",
+        ".B1111B.",
+        ".BBBBBB."
+    )
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 8f
+        val cellH = size.height / 8f
+        grid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    'B' -> outlineColor
+                    '1', '2', '3', '4', '5' -> {
+                        val barIndex = ch.digitToInt()
+                        if (barIndex <= clamped) {
+                            if (colIdx == 2) highlightColor else barColor
+                        } else {
+                            emptySlotColor
+                        }
+                    }
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 8x8 Pixel Art Dice Icon for rolling a writing prompt.
+ */
+@Composable
+fun PixelDiceIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tintOverride: Color? = null,
+    description: String = "Sortear gatilho de escrita"
+) {
+    val palette = LocalPixelPalette.current
+    val borderColor = palette.pixelBorder
+    val bodyColor = tintOverride ?: palette.surfaceElevated
+    val pipColor = palette.primary
+
+    val grid = listOf(
+        ".BBBBBB.",
+        "B111111B",
+        "B1P11P1B",
+        "B111111B",
+        "B11PP11B",
+        "B1P11P1B",
+        "B111111B",
+        ".BBBBBB."
+    )
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 8f
+        val cellH = size.height / 8f
+        grid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    'B' -> borderColor
+                    '1' -> bodyColor
+                    'P' -> pipColor
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 8x8 Pixel Art Padlock Icon for Stealth Mode and locked Time Capsules.
+ */
+@Composable
+fun PixelLockIcon(
+    isLocked: Boolean = true,
+    modifier: Modifier = Modifier.size(22.dp),
+    tintOverride: Color? = null,
+    description: String = if (isLocked) "Protegido com cadeado" else "Desbloqueado"
+) {
+    val palette = LocalPixelPalette.current
+    val borderColor = palette.pixelBorder
+    val bodyColor = tintOverride ?: if (isLocked) palette.snoozeAmber else palette.wellnessGreen
+    val shackleColor = palette.textSecondary
+    val keyholeColor = Color(0xFF1A1B26)
+
+    val grid = if (isLocked) {
+        listOf(
+            "..SSSS..",
+            ".S....S.",
+            ".S....S.",
+            "BBBBBBBB",
+            "B111111B",
+            "B11KK11B",
+            "B11KK11B",
+            "BBBBBBBB"
+        )
+    } else {
+        listOf(
+            "...SSSS.",
+            "..S....S",
+            ".......S",
+            "BBBBBBBB",
+            "B111111B",
+            "B11KK11B",
+            "B11KK11B",
+            "BBBBBBBB"
+        )
+    }
+
+    Canvas(
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        val cellW = size.width / 8f
+        val cellH = size.height / 8f
+        grid.forEachIndexed { rowIdx, rowStr ->
+            rowStr.forEachIndexed { colIdx, ch ->
+                val color = when (ch) {
+                    'B' -> borderColor
+                    'S' -> shackleColor
+                    '1' -> bodyColor
+                    'K' -> keyholeColor
+                    else -> null
+                }
+                if (color != null) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(colIdx * cellW, rowIdx * cellH),
+                        size = Size(cellW + 0.5f, cellH + 0.5f)
+                    )
+                }
+            }
+        }
+    }
+}

@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -63,4 +64,35 @@ interface RoutineDao {
 
     @Query("DELETE FROM check_in_logs")
     suspend fun clearAllCheckIns()
+
+    // --- Journal Entries (Módulo Diário, Humor & Energia) ---
+
+    @Query("SELECT * FROM journal_entries ORDER BY timestamp DESC")
+    fun observeAllJournalEntries(): Flow<List<JournalEntryEntity>>
+
+    @Query("SELECT * FROM journal_entries WHERE dateKey = :dateKey ORDER BY timestamp DESC")
+    fun observeJournalEntriesByDate(dateKey: String): Flow<List<JournalEntryEntity>>
+
+    @Query("SELECT * FROM journal_entries ORDER BY timestamp DESC")
+    suspend fun getAllJournalEntriesOnce(): List<JournalEntryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertJournalEntry(entry: JournalEntryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertJournalEntries(entries: List<JournalEntryEntity>)
+
+    @Delete
+    suspend fun deleteJournalEntry(entry: JournalEntryEntity)
+
+    @Query("DELETE FROM journal_entries")
+    suspend fun clearAllJournalEntries()
+
+    @Transaction
+    suspend fun replaceAllJournalEntries(entries: List<JournalEntryEntity>) {
+        clearAllJournalEntries()
+        if (entries.isNotEmpty()) {
+            insertJournalEntries(entries)
+        }
+    }
 }

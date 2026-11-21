@@ -4,9 +4,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.data.AppDatabase
+import com.example.data.UserPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class BootCompletedReceiver : BroadcastReceiver() {
@@ -35,6 +37,13 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     val nextMillis = AlarmScheduler.scheduleRoutine(appContext, routine)
                     dao.updateRoutine(routine.copy(nextTriggerMillis = nextMillis))
                 }
+                val settings = UserPreferencesRepository(appContext).settingsFlow.first()
+                AlarmScheduler.scheduleDailyCheckInNotification(
+                    context = appContext,
+                    enabled = settings.dailyCheckInNotifEnabled,
+                    hour = settings.dailyCheckInNotifHour,
+                    minute = settings.dailyCheckInNotifMinute
+                )
             } finally {
                 pendingResult.finish()
             }

@@ -44,10 +44,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Today
@@ -71,7 +73,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.alarm.AlarmScheduler
@@ -79,6 +83,7 @@ import com.example.alarm.NotificationHelper
 import com.example.data.CalendarSyncHelper
 import com.example.data.DateUtils
 import com.example.data.FrequencyType
+import com.example.data.JournalEntryType
 import com.example.ui.AppTab
 import com.example.ui.RoutineViewModel
 import com.example.ui.components.PixelBadge
@@ -86,6 +91,7 @@ import com.example.ui.components.PixelConfettiOverlay
 import com.example.ui.components.PixelSpriteIcon
 import com.example.ui.components.PixelSpriteType
 import com.example.ui.components.RoutineEditorDialog
+import com.example.ui.screens.JournalScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.SettingsThemeBackupScreen
 import com.example.ui.screens.TodayScreen
@@ -96,17 +102,42 @@ import com.example.ui.theme.PixelRotinaTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private val pendingOpenTabState = mutableStateOf<AppTab?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        parseIntentTab(intent)
         setContent {
             val viewModel: RoutineViewModel = viewModel()
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val pendingTab by pendingOpenTabState
+
+            LaunchedEffect(pendingTab) {
+                val target = pendingTab ?: return@LaunchedEffect
+                if (target == AppTab.JOURNAL) {
+                    viewModel.selectJournalDate(DateUtils.todayDateKey())
+                }
+                viewModel.selectTab(target)
+                pendingOpenTabState.value = null
+            }
 
             PixelRotinaTheme(themeType = uiState.settings.themeType) {
                 PixelRotinaApp(viewModel = viewModel)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        parseIntentTab(intent)
+    }
+
+    private fun parseIntentTab(intent: Intent?) {
+        val tabName = intent?.getStringExtra(AlarmScheduler.EXTRA_OPEN_TAB) ?: return
+        val tab = AppTab.entries.firstOrNull { it.name == tabName } ?: return
+        pendingOpenTabState.value = tab
     }
 }
 
@@ -230,28 +261,30 @@ fun PixelRotinaApp(
                         )
                     },
                     floatingActionButton = {
-                        FloatingActionButton(
-                            onClick = { viewModel.openCreateRoutineDialog(FrequencyType.SPECIFIC_TIME) },
-                            containerColor = palette.accent,
-                            contentColor = palette.onAccent,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .border(2.5.dp, palette.pixelBorder, RoundedCornerShape(8.dp))
-                                .testTag("fab_add_routine")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (uiState.selectedTab != AppTab.JOURNAL) {
+                            FloatingActionButton(
+                                onClick = { viewModel.openCreateRoutineDialog(FrequencyType.SPECIFIC_TIME) },
+                                containerColor = palette.accent,
+                                contentColor = palette.onAccent,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .border(2.5.dp, palette.pixelBorder, RoundedCornerShape(8.dp))
+                                    .testTag("fab_add_routine")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Criar nova rotina"
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "NOVA ROTINA",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Criar nova rotina"
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "NOVA ROTINA",
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
                             }
                         }
                     },
@@ -264,6 +297,7 @@ fun PixelRotinaApp(
                             val items = listOf(
                                 Triple(AppTab.TODAY, stringResource(R.string.tab_today), Icons.Filled.Today to Icons.Outlined.Today),
                                 Triple(AppTab.WEEKLY_CALENDAR, stringResource(R.string.tab_calendar), Icons.Filled.CalendarMonth to Icons.Outlined.CalendarMonth),
+                                Triple(AppTab.JOURNAL, stringResource(R.string.tab_journal), Icons.Filled.AutoStories to Icons.Outlined.AutoStories),
                                 Triple(AppTab.WEEKLY_REPORT, stringResource(R.string.tab_report), Icons.Filled.Analytics to Icons.Outlined.Analytics),
                                 Triple(AppTab.SETTINGS_BACKUP, stringResource(R.string.tab_settings), Icons.Filled.Settings to Icons.Outlined.Settings)
                             )
@@ -282,7 +316,10 @@ fun PixelRotinaApp(
                                     label = {
                                         Text(
                                             text = label,
-                                            style = MaterialTheme.typography.labelSmall
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     },
                                     colors = NavigationBarItemDefaults.colors(
@@ -366,6 +403,27 @@ fun PixelRotinaApp(
                                     onCompleteLinkedRoutineFromPomodoroAlert = { routineId ->
                                         viewModel.completeLinkedRoutineFromPomodoroAlert(routineId)
                                     },
+                                    onSaveQuickMoodEnergy = { mood, energy, tags ->
+                                        viewModel.saveJournalEntry(
+                                            entryType = JournalEntryType.MOOD_CHECKIN,
+                                            moodScore = mood,
+                                            energyScore = energy,
+                                            contextTags = tags,
+                                            content = "",
+                                            unlockAtMillis = null,
+                                            dateKey = uiState.todayDateKey
+                                        )
+                                    },
+                                    onSavePostRoutineMoodEnergy = { routine, mood, energy ->
+                                        viewModel.savePostRoutineMoodEnergy(routine, mood, energy)
+                                    },
+                                    onDismissPostRoutineMoodPrompt = {
+                                        viewModel.dismissPostRoutineMoodPrompt()
+                                    },
+                                    onOpenJournalTab = {
+                                        viewModel.selectJournalDate(uiState.todayDateKey)
+                                        viewModel.selectTab(AppTab.JOURNAL)
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
 
@@ -397,6 +455,37 @@ fun PixelRotinaApp(
                                     },
                                     onEditRoutine = { viewModel.openEditRoutineDialog(it) },
                                     onRefreshCalendar = { viewModel.refreshDeviceCalendarEvents() },
+                                    onOpenJournalForDate = { dateKey ->
+                                        viewModel.selectJournalDate(dateKey)
+                                        viewModel.selectTab(AppTab.JOURNAL)
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                AppTab.JOURNAL -> JournalScreen(
+                                    uiState = uiState,
+                                    onSelectDate = { viewModel.selectJournalDate(it) },
+                                    onShiftDate = { viewModel.shiftJournalDate(it) },
+                                    onSaveEntry = { type, mood, energy, tags, content, unlockAt ->
+                                        viewModel.saveJournalEntry(
+                                            entryType = type,
+                                            moodScore = mood,
+                                            energyScore = energy,
+                                            contextTags = tags,
+                                            content = content,
+                                            unlockAtMillis = unlockAt
+                                        )
+                                    },
+                                    onDeleteEntry = { viewModel.deleteJournalEntry(it) },
+                                    onToggleStealthMode = { viewModel.toggleStealthMode() },
+                                    onSetStealthMode = { viewModel.setStealthMode(it) },
+                                    onRequestAiReaction = { entry, mode ->
+                                        viewModel.requestAiReactionForEntry(entry, mode)
+                                    },
+                                    onRequestWeeklyPatchNotes = { viewModel.requestWeeklyPatchNotes() },
+                                    onOpenSuggestedRoutine = { json ->
+                                        viewModel.openSuggestedRoutineInEditor(json)
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
 
@@ -450,6 +539,14 @@ fun PixelRotinaApp(
                                     onRestoreQuickLocalBackup = { viewModel.restoreQuickInternalBackup() },
                                     onStopRingingAlarm = { viewModel.stopRingingAlarmNow() },
                                     onReopenOnboarding = { viewModel.reopenOnboarding() },
+                                    onUpdateJournalPin = { viewModel.updateJournalPin(it) },
+                                    onToggleStealthMode = { viewModel.toggleStealthMode() },
+                                    onUpdateGeminiApiKey = { viewModel.updateGeminiApiKey(it) },
+                                    onUpdateGeminiModelName = { viewModel.updateGeminiModelName(it) },
+                                    onToggleDailyCheckInNotif = { viewModel.setDailyCheckInNotificationEnabled(it) },
+                                    onUpdateDailyCheckInTime = { h, m -> viewModel.setDailyCheckInNotificationTime(h, m) },
+                                    onTestDailyCheckInNotif = { viewModel.triggerTestDailyCheckInNotification() },
+                                    onTogglePromptMoodAfterRoutine = { viewModel.setPromptMoodAfterRoutineCheckIn(it) },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
